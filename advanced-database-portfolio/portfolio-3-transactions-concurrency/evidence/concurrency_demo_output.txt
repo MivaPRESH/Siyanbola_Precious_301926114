@@ -1,0 +1,183 @@
+
+====================================================================================================
+S1  DUPLICATE PAYMENT NOTIFICATION - the bank's webhook delivers payment DEMO-WH-xxxx twice, 1 ms apart
+====================================================================================================
+
+--- check-then-insert (SELECT count, then INSERT) ---
+[  0.137s] WH-1  SELECT count(*) FROM vend WHERE payment_ref = 'DEMO-WH-0001'
+[  0.137s] WH-2  SELECT count(*) FROM vend WHERE payment_ref = 'DEMO-WH-0001'
+[  0.139s] WH-2    -> [(0,)]
+[  0.139s] WH-1    -> [(0,)]
+[  0.339s] WH-1  INSERT INTO vend (meter_no, payment_ref, channel, amount, vat, tariff_id, kwh) VALUES ('99000000001', 'DEMO-WH-0001', 'BANK', 5000, 0, 1, 1) RETURNING
+[  0.339s] WH-2  INSERT INTO vend (meter_no, payment_ref, channel, amount, vat, tariff_id, kwh) VALUES ('99000000001', 'DEMO-WH-0001', 'BANK', 5000, 0, 1, 1) RETURNING
+[  0.344s] WH-2    -> [('28531241253941388266',)]
+[  0.345s] WH-2  COMMIT
+[  0.347s] WH-1  ROLLBACK
+RESULT: WH-1: ERROR 23505 vend_payment_ref_key -> customer charged, no token shown | WH-2: token 28531241253941388266 | sales recorded = 1 | both callers got the same token = False
+
+--- INSERT ... ON CONFLICT (payment_ref) DO NOTHING + read back ---
+[  0.359s] WH-2  INSERT INTO vend (meter_no, payment_ref, channel, amount, vat, tariff_id, kwh) VALUES ('99000000001', 'DEMO-WH-0002', 'BANK', 5000, 0, 1, 1) ON CONFLI
+[  0.359s] WH-1  INSERT INTO vend (meter_no, payment_ref, channel, amount, vat, tariff_id, kwh) VALUES ('99000000001', 'DEMO-WH-0002', 'BANK', 5000, 0, 1, 1) ON CONFLI
+[  0.364s] WH-2    -> [('82671210902637905703',)]
+[  0.365s] WH-2  COMMIT
+[  0.366s] WH-1    -> []
+[  0.367s] WH-1  SELECT token FROM vend WHERE payment_ref = 'DEMO-WH-0002'
+[  0.367s] WH-1    -> [('82671210902637905703',)]
+[  0.367s] WH-1  COMMIT
+RESULT: WH-1: token 82671210902637905703 (existing sale returned) | WH-2: token 82671210902637905703 (new sale) | sales recorded = 1 | both callers got the same token = True
+
+====================================================================================================
+S2  BILL PAYMENT - the bakery pays 100,000 by app and 100,000 at the bank at the same moment (bill total 638,550)
+====================================================================================================
+
+--- read paid, add in the application, write it back ---
+[  0.391s] BANK  INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-BANK', 100000)
+[  0.391s] APP   INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-APP', 100000)
+[  0.392s] BANK    -> INSERT 0 1
+[  0.392s] BANK  SELECT paid FROM bill WHERE bill_id = 85038
+[  0.392s] APP     -> INSERT 0 1
+[  0.392s] APP   SELECT paid FROM bill WHERE bill_id = 85038
+[  0.392s] BANK    -> [(Decimal('0.00'),)]
+[  0.392s] APP     -> [(Decimal('0.00'),)]
+[  0.593s] BANK  UPDATE bill SET paid = 100000.00 WHERE bill_id = 85038
+[  0.593s] APP   UPDATE bill SET paid = 100000.00 WHERE bill_id = 85038
+[  0.594s] BANK    -> UPDATE 1
+[  0.594s] BANK  COMMIT
+[  0.595s] APP     -> UPDATE 1
+[  0.595s] APP   COMMIT
+RESULT: {'BANK': 'ok', 'APP': 'ok'} | payments recorded = 200,000.00; bill.paid = 100,000.00 of 638,550.00 => WRONG: 100,000.00 naira paid but not credited (LOST UPDATE)
+
+--- UPDATE bill SET paid = paid + amount (atomic) ---
+[  0.623s] BANK  INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-BANK', 100000)
+[  0.624s] APP   INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-APP', 100000)
+[  0.625s] BANK    -> INSERT 0 1
+[  0.625s] BANK  UPDATE bill SET paid = paid + 100000 WHERE bill_id = 85038 RETURNING paid
+[  0.625s] APP     -> INSERT 0 1
+[  0.625s] APP   UPDATE bill SET paid = paid + 100000 WHERE bill_id = 85038 RETURNING paid
+[  0.626s] APP     -> [(Decimal('100000.00'),)]
+[  0.626s] APP   COMMIT
+[  0.626s] BANK    -> [(Decimal('200000.00'),)]
+[  0.627s] BANK  COMMIT
+RESULT: {'APP': 'ok', 'BANK': 'ok'} | payments recorded = 200,000.00; bill.paid = 200,000.00 of 638,550.00 => consistent
+
+--- three payments of 300,000 at once on a 638,550 bill (atomic) - the third would overpay ---
+[  0.653s] BANK  INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-B', 300000)
+[  0.654s] APP   INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-A', 300000)
+[  0.654s] POS   INSERT INTO payment (bill_id, payment_ref, amount) VALUES (85038, 'DEMO-S2-C', 300000)
+[  0.655s] BANK    -> INSERT 0 1
+[  0.655s] BANK  UPDATE bill SET paid = paid + 300000 WHERE bill_id = 85038 RETURNING paid
+[  0.655s] APP     -> INSERT 0 1
+[  0.655s] APP   UPDATE bill SET paid = paid + 300000 WHERE bill_id = 85038 RETURNING paid
+[  0.657s] APP     -> [(Decimal('300000.00'),)]
+[  0.657s] POS     -> INSERT 0 1
+[  0.657s] POS   UPDATE bill SET paid = paid + 300000 WHERE bill_id = 85038 RETURNING paid
+[  0.658s] BANK    -> [(Decimal('600000.00'),)]
+[  0.658s] APP   COMMIT
+[  0.659s] BANK  COMMIT
+[  0.659s] POS   ROLLBACK
+RESULT: {'APP': 'ok', 'BANK': 'ok', 'POS': 'rejected by CHECK bill_no_overpayment'} | payments recorded = 600,000.00; bill.paid = 600,000.00 of 638,550.00 => consistent
+
+====================================================================================================
+S3  TARIFF CHANGES DURING A SALE - Folake (band A, R2) is quoted, then pays; the tariff team commits a new rate in between
+====================================================================================================
+
+--- READ COMMITTED ---
+[  0.705s] SALE  SELECT round((10000 - round(10000 * 0.075 / 1.075, 2)) / rate_per_kwh, 2), rate_per_kwh FROM tariff WHERE tariff_id = 8
+[  0.706s] SALE    -> [(Decimal('41.34'), Decimal('225.00'))]
+[  0.706s] SALE    app shows: 10,000 naira buys 41.34 kWh at 225.00/kWh - customer confirms ...
+[  0.706s] TARIF UPDATE tariff SET rate_per_kwh = 250.00 WHERE tariff_id = 8
+[  0.707s] TARIF   -> UPDATE 1
+[  0.708s] TARIF COMMIT
+[  0.708s] SALE  WITH v AS (INSERT INTO vend (meter_no, payment_ref, channel, amount, vat, tariff_id, kwh) VALUES ('99000000001', 'DEMO-S3-RC', 'APP', 10000, 0, 1, 1) 
+[  0.712s] SALE    -> [(Decimal('37.21'), Decimal('250.00'))]
+[  0.713s] SALE  COMMIT
+RESULT (READ COMMITTED): quoted 41.34 kWh at 225.00; token issued for 37.21 kWh at 250.00 => INCONSISTENT: quoted one price, charged another (non-repeatable read)
+
+--- REPEATABLE READ ---
+[  0.723s] SALE  SELECT round((10000 - round(10000 * 0.075 / 1.075, 2)) / rate_per_kwh, 2), rate_per_kwh FROM tariff WHERE tariff_id = 8
+[  0.724s] SALE    -> [(Decimal('41.34'), Decimal('225.00'))]
+[  0.724s] SALE    app shows: 10,000 naira buys 41.34 kWh at 225.00/kWh - customer confirms ...
+[  0.724s] TARIF UPDATE tariff SET rate_per_kwh = 250.00 WHERE tariff_id = 8
+[  0.725s] TARIF   -> UPDATE 1
+[  0.726s] TARIF COMMIT
+[  0.726s] SALE  WITH v AS (INSERT INTO vend (meter_no, payment_ref, channel, amount, vat, tariff_id, kwh) VALUES ('99000000001', 'DEMO-S3-RR', 'APP', 10000, 0, 1, 1) 
+[  0.731s] SALE    -> [(Decimal('41.34'), Decimal('225.00'))]
+[  0.732s] SALE  COMMIT
+RESULT (REPEATABLE READ): quoted 41.34 kWh at 225.00; token issued for 41.34 kWh at 225.00 => consistent
+(tariff restored to 225.00 )
+
+====================================================================================================
+S4  LOCK WAITS - the billing job holds the bakery's bill for 3 s; customer care tries to add a 5,000 naira credit
+====================================================================================================
+
+--- default: wait ---
+[  0.745s] BILL  SELECT bill_id, paid FROM bill WHERE bill_id = 85038 FOR UPDATE
+[  0.745s] BILL    -> [(85038, Decimal('300000.00'))]
+[  0.746s] CARE  SELECT paid FROM bill WHERE bill_id = 85038 FOR UPDATE
+[  3.746s] BILL  ROLLBACK
+[  3.747s] CARE    -> [(Decimal('300000.00'),)]
+[  3.747s] CARE  ROLLBACK
+RESULT (default: wait): got the lock after 3.00 s
+
+--- NOWAIT ---
+[  3.954s] BILL  SELECT bill_id, paid FROM bill WHERE bill_id = 85038 FOR UPDATE
+[  3.955s] BILL    -> [(85038, Decimal('300000.00'))]
+[  3.956s] CARE  SELECT paid FROM bill WHERE bill_id = 85038 FOR UPDATE NOWAIT
+[  3.957s] CARE  ROLLBACK
+RESULT (NOWAIT): ERROR 55P03 could not obtain lock on row in relation "bill" after 0.00 s
+[  6.956s] BILL  ROLLBACK
+
+--- lock_timeout = 500ms ---
+[  7.165s] BILL  SELECT bill_id, paid FROM bill WHERE bill_id = 85038 FOR UPDATE
+[  7.167s] BILL    -> [(85038, Decimal('300000.00'))]
+[  7.167s] CARE  SET lock_timeout = '500ms'
+[  7.167s] CARE    -> SET
+[  7.167s] CARE  SELECT paid FROM bill WHERE bill_id = 85038 FOR UPDATE
+[  7.668s] CARE  ROLLBACK
+RESULT (lock_timeout = 500ms): ERROR 55P03 canceling statement due to lock timeout after 0.50 s
+[ 10.167s] BILL  ROLLBACK
+
+====================================================================================================
+S5  ARCHIVING NOVEMBER 2025 - a 2 s energy report is running; meters keep sending readings every 50 ms
+====================================================================================================
+
+--- ALTER TABLE ... DETACH PARTITION ---
+[ 10.878s] REPRT SELECT count(*) FROM meter_reading WHERE read_at >= '2026-10-01 00:00+01'
+[ 10.905s] REPRT   -> [(301675,)]
+[ 10.908s] ADMIN ALTER TABLE meter_reading DETACH PARTITION meter_reading_2025_11
+[ 12.908s] REPRT COMMIT
+[ 12.909s] ADMIN   -> ALTER TABLE
+[ 12.909s] ADMIN   detach finished after 2.00 s
+RESULT (ALTER TABLE ... DETACH PARTITION): 21 readings inserted; slowest insert 1963 ms, median 1.4 ms; partitions now attached = 12
+
+--- ALTER TABLE ... DETACH PARTITION CONCURRENTLY ---
+[ 13.969s] REPRT SELECT count(*) FROM meter_reading WHERE read_at >= '2026-10-01 00:00+01'
+[ 13.997s] REPRT   -> [(301696,)]
+[ 14.000s] ADMIN ALTER TABLE meter_reading DETACH PARTITION meter_reading_2025_11 CONCURRENTLY
+[ 15.998s] REPRT COMMIT
+[ 16.000s] ADMIN   -> ALTER TABLE
+[ 16.000s] ADMIN   detach finished after 2.00 s
+RESULT (ALTER TABLE ... DETACH PARTITION CONCURRENTLY): 59 readings inserted; slowest insert 7 ms, median 1.6 ms; partitions now attached = 12
+
+====================================================================================================
+S6  MONTH-END REPORT - total revenue, then revenue by channel, while the app keeps selling tokens
+====================================================================================================
+
+--- READ COMMITTED ---
+[ 16.864s] REPRT SELECT sum(amount) FROM vend WHERE vended_at >= '2026-11-01 00:00+01'
+[ 16.924s] REPRT   -> [(Decimal('379301000.00'),)]
+[ 17.425s] REPRT SELECT sum(s) FROM (SELECT channel, sum(amount) s FROM vend WHERE vended_at >= '2026-11-01 00:00+01' GROUP BY channel) x
+[ 17.482s] REPRT   -> [(Decimal('379386000.00'),)]
+[ 17.482s] REPRT COMMIT
+RESULT (READ COMMITTED): total line 379,301,000.00; sum of channel lines 379,386,000.00 => REPORT DOES NOT ADD UP (difference 85,000.00)
+
+--- REPEATABLE READ ---
+[ 17.485s] REPRT SELECT sum(amount) FROM vend WHERE vended_at >= '2026-11-01 00:00+01'
+[ 17.539s] REPRT   -> [(Decimal('379392000.00'),)]
+[ 18.039s] REPRT SELECT sum(s) FROM (SELECT channel, sum(amount) s FROM vend WHERE vended_at >= '2026-11-01 00:00+01' GROUP BY channel) x
+[ 18.106s] REPRT   -> [(Decimal('379392000.00'),)]
+[ 18.106s] REPRT COMMIT
+RESULT (REPEATABLE READ): total line 379,392,000.00; sum of channel lines 379,392,000.00 => totals agree
+(removed 233 demo sales made during S6)
+
+All scenarios completed.

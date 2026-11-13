@@ -1,0 +1,133 @@
+-- Q2 [baseline] Energy accounting: October consumption of postpaid meters per business unit and band
+-- random_page_cost=4; median of 7 warm runs: 624.536 ms (min 581.084, max 710.519); planning 1.264 ms; shared buffers touched: 36303
+-- SQL executed:
+--   WITH m AS (
+--     SELECT meter_no, max(kwh_total) - min(kwh_total) AS kwh
+--     FROM   meter_reading
+--     WHERE  date_trunc('month', read_at AT TIME ZONE 'Africa/Lagos') = timestamp '2026-10-01'
+--     GROUP  BY meter_no)
+--   SELECT vm.bu_code, vm.band, count(*) AS meters, round(sum(m.kwh)) AS kwh
+--   FROM   m JOIN v_meter vm USING (meter_no)
+--   GROUP  BY vm.bu_code, vm.band
+--   ORDER  BY vm.bu_code, vm.band;
+
+GroupAggregate  (cost=55749.32..55838.56 rows=40 width=46) (actual time=601.448..602.992 rows=40 loops=1)
+  Group Key: b.bu_code, f.band
+  Buffers: shared hit=14275 read=22028, temp read=819 written=822
+  ->  Sort  (cost=55749.32..55767.05 rows=7091 width=38) (actual time=601.394..601.853 rows=7086 loops=1)
+        Sort Key: b.bu_code, f.band
+        Sort Method: quicksort  Memory: 469kB
+        Buffers: shared hit=14275 read=22028, temp read=819 written=822
+        ->  Hash Join  (cost=52006.64..55295.79 rows=7091 width=38) (actual time=576.565..598.676 rows=7086 loops=1)
+              Hash Cond: (f.bu_id = b.bu_id)
+              Buffers: shared hit=14275 read=22028, temp read=819 written=822
+              ->  Hash Join  (cost=52005.46..55266.14 rows=7091 width=36) (actual time=576.552..597.303 rows=7086 loops=1)
+                    Hash Cond: (dt.feeder_id = f.feeder_id)
+                    Buffers: shared hit=14274 read=22028, temp read=819 written=822
+                    ->  Hash Join  (cost=52001.76..55243.17 rows=7091 width=34) (actual time=576.522..596.023 rows=7086 loops=1)
+                          Hash Cond: (me.dt_id = dt.dt_id)
+                          Buffers: shared hit=14273 read=22028, temp read=819 written=822
+                          ->  Nested Loop  (cost=51966.76..55189.49 rows=7091 width=36) (actual time=576.292..594.207 rows=7086 loops=1)
+                                Buffers: shared hit=14273 read=22020, temp read=819 written=822
+                                ->  Hash Join  (cost=51966.47..52857.73 rows=7091 width=40) (actual time=576.263..587.010 rows=7086 loops=1)
+                                      Hash Cond: (me.meter_no = m.meter_no)
+                                      Buffers: shared hit=75 read=22020, temp read=819 written=822
+                                      ->  Seq Scan on meter me  (cost=0.00..781.00 rows=42000 width=20) (actual time=0.002..3.820 rows=42000 loops=1)
+                                            Buffers: shared hit=1 read=360
+                                      ->  Hash  (cost=51877.83..51877.83 rows=7091 width=44) (actual time=576.253..576.362 rows=7086 loops=1)
+                                            Buckets: 8192  Batches: 1  Memory Usage: 418kB
+                                            Buffers: shared hit=74 read=21660, temp read=819 written=822
+                                            ->  Subquery Scan on m  (cost=50253.99..51877.83 rows=7091 width=44) (actual time=496.478..574.715 rows=7086 loops=1)
+                                                  Buffers: shared hit=74 read=21660, temp read=819 written=822
+                                                  ->  Finalize GroupAggregate  (cost=50253.99..51806.92 rows=7091 width=44) (actual time=496.477..573.987 rows=7086 loops=1)
+                                                        Group Key: meter_reading.meter_no
+                                                        Buffers: shared hit=74 read=21660, temp read=819 written=822
+                                                        ->  Gather Merge  (cost=50253.99..51635.67 rows=11016 width=76) (actual time=496.463..570.212 rows=7086 loops=1)
+                                                              Workers Planned: 2
+                                                              Workers Launched: 2
+                                                              Buffers: shared hit=74 read=21660, temp read=819 written=822
+                                                              ->  Partial GroupAggregate  (cost=49253.96..49364.12 rows=5508 width=76) (actual time=472.963..500.416 rows=2362 loops=3)
+                                                                    Group Key: meter_reading.meter_no
+                                                                    Buffers: shared hit=74 read=21660, temp read=819 written=822
+                                                                    ->  Sort  (cost=49253.96..49267.73 rows=5508 width=20) (actual time=472.944..482.087 rows=72490 loops=3)
+                                                                          Sort Key: meter_reading.meter_no
+                                                                          Sort Method: quicksort  Memory: 25kB
+                                                                          Buffers: shared hit=74 read=21660, temp read=819 written=822
+                                                                          Worker 0:  Sort Method: external merge  Disk: 6552kB
+                                                                          Worker 1:  Sort Method: quicksort  Memory: 25kB
+                                                                          ->  Parallel Append  (cost=0.00..48911.71 rows=5508 width=20) (actual time=311.147..409.007 rows=72490 loops=3)
+                                                                                Buffers: shared read=21660
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_10 meter_reading_12  (cost=0.00..4023.65 rows=639 width=20) (actual time=0.052..139.519 rows=217469 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Buffers: shared read=1785
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_08 meter_reading_10  (cost=0.00..4022.59 rows=639 width=20) (actual time=105.839..105.840 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 217463
+                                                                                      Buffers: shared read=1784
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_07 meter_reading_9  (cost=0.00..4022.51 rows=639 width=20) (actual time=66.578..66.578 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 217455
+                                                                                      Buffers: shared read=1784
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_05 meter_reading_7  (cost=0.00..4020.58 rows=639 width=20) (actual time=75.449..75.449 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 217462
+                                                                                      Buffers: shared read=1782
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_03 meter_reading_5  (cost=0.00..4020.05 rows=640 width=20) (actual time=114.494..114.494 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 217508
+                                                                                      Buffers: shared read=1781
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_01 meter_reading_3  (cost=0.00..4017.51 rows=639 width=20) (actual time=111.794..111.794 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 217455
+                                                                                      Buffers: shared read=1779
+                                                                                ->  Parallel Seq Scan on meter_reading_2025_12 meter_reading_2  (cost=0.00..4013.87 rows=639 width=20) (actual time=64.376..64.376 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 217393
+                                                                                      Buffers: shared read=1776
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_09 meter_reading_11  (cost=0.00..3893.13 rows=619 width=20) (actual time=26.177..26.177 rows=0 loops=3)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 70141
+                                                                                      Buffers: shared read=1727
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_06 meter_reading_8  (cost=0.00..3892.90 rows=619 width=20) (actual time=119.267..119.267 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 210499
+                                                                                      Buffers: shared read=1726
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_04 meter_reading_6  (cost=0.00..3889.88 rows=619 width=20) (actual time=110.018..110.018 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 210400
+                                                                                      Buffers: shared read=1724
+                                                                                ->  Parallel Seq Scan on meter_reading_2025_11 meter_reading_1  (cost=0.00..3878.25 rows=619 width=20) (actual time=127.859..127.859 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 210436
+                                                                                      Buffers: shared read=1712
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_02 meter_reading_4  (cost=0.00..3630.53 rows=578 width=20) (actual time=63.397..63.397 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 196474
+                                                                                      Buffers: shared read=1608
+                                                                                ->  Parallel Seq Scan on meter_reading_2026_11 meter_reading_13  (cost=0.00..1558.72 rows=248 width=20) (actual time=23.449..23.449 rows=0 loops=1)
+                                                                                      Filter: (date_trunc('month'::text, (read_at AT TIME ZONE 'Africa/Lagos'::text)) = '2026-10-01 00:00:00'::timestamp without time zone)
+                                                                                      Rows Removed by Filter: 84196
+                                                                                      Buffers: shared read=692
+                                ->  Index Only Scan using customer_pkey on customer c  (cost=0.29..0.33 rows=1 width=4) (actual time=0.001..0.001 rows=1 loops=7086)
+                                      Index Cond: (customer_id = me.customer_id)
+                                      Heap Fetches: 25
+                                      Buffers: shared hit=14198
+                          ->  Hash  (cost=20.00..20.00 rows=1200 width=6) (actual time=0.225..0.226 rows=1200 loops=1)
+                                Buckets: 2048  Batches: 1  Memory Usage: 61kB
+                                Buffers: shared read=8
+                                ->  Seq Scan on transformer dt  (cost=0.00..20.00 rows=1200 width=6) (actual time=0.006..0.111 rows=1200 loops=1)
+                                      Buffers: shared read=8
+                    ->  Hash  (cost=2.20..2.20 rows=120 width=6) (actual time=0.025..0.026 rows=120 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on feeder f  (cost=0.00..2.20 rows=120 width=6) (actual time=0.003..0.012 rows=120 loops=1)
+                                Buffers: shared hit=1
+              ->  Hash  (cost=1.08..1.08 rows=8 width=6) (actual time=0.008..0.008 rows=8 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                    Buffers: shared hit=1
+                    ->  Seq Scan on business_unit b  (cost=0.00..1.08 rows=8 width=6) (actual time=0.004..0.005 rows=8 loops=1)
+                          Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=20 read=2
+Planning Time: 0.811 ms
+Execution Time: 603.110 ms

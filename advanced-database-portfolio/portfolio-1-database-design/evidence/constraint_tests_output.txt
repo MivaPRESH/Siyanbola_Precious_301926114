@@ -1,0 +1,54 @@
+SET
+--- T1  a second band A / R2 tariff overlapping the current one (exclusion constraint on daterange)
+psql:03_constraint_tests.sql:15: ERROR:  conflicting key value violates exclusion constraint "tariff_no_overlap"
+DETAIL:  Key (band, customer_class, valid_during)=(A, R2, [2026-12-01,)) conflicts with existing key (band, customer_class, valid_during)=(A, R2, [2026-07-01,)).
+--- T2  token for a SUSPENDED meter (trigger)
+psql:03_constraint_tests.sql:18: ERROR:  meter 45100008245 is SUSPENDED: vending blocked
+CONTEXT:  PL/pgSQL function vend_price() line 13 at RAISE
+--- T3  token for a POSTPAID meter (trigger)
+psql:03_constraint_tests.sql:21: ERROR:  meter 45100000097 is POSTPAID: tokens are only sold to prepaid meters
+CONTEXT:  PL/pgSQL function vend_price() line 10 at RAISE
+--- T4  the bank sends the same payment notification twice (UNIQUE payment_ref = idempotent vending)
+psql:03_constraint_tests.sql:24: ERROR:  duplicate key value violates unique constraint "vend_payment_ref_key"
+DETAIL:  Key (payment_ref)=(VGP-251101-eae89144b191d737) already exists.
+--- T5  vend below the minimum of 500 naira (CHECK)
+psql:03_constraint_tests.sql:27: ERROR:  new row for relation "vend" violates check constraint "vend_amount_check"
+DETAIL:  Failing row contains (823796, 45100000291, TEST-T5, USSD, 200.00, 13.95, 16, 2.80, 30831439286950950360, 2026-11-13 09:02:12.79502+01).
+--- T6  a reading dated 2024 - no partition covers it (partitioned table without a DEFAULT partition)
+psql:03_constraint_tests.sql:30: ERROR:  no partition of relation "meter_reading" found for row
+DETAIL:  Partition key of the failing row contains (read_at) = (2024-03-01 00:00:00+01).
+--- T7  a second bill for the same meter and month (UNIQUE meter_no, period)
+psql:03_constraint_tests.sql:34: ERROR:  duplicate key value violates unique constraint "bill_meter_no_period_key"
+DETAIL:  Key (meter_no, period)=(45100000097, 2025-11-01) already exists.
+--- T8  bill period that is not the first day of a month (CHECK)
+psql:03_constraint_tests.sql:37: ERROR:  new row for relation "bill" violates check constraint "bill_period_check"
+DETAIL:  Failing row contains (85034, 45100000097, 2026-12-15, 10.0, 1, 1000.00, 75.00, 0.00, 2027-01-29).
+--- T9  overpayment: bill marked as paid more than energy + VAT (CHECK bill_no_overpayment)
+psql:03_constraint_tests.sql:40: ERROR:  new row for relation "bill" violates check constraint "bill_no_overpayment"
+DETAIL:  Failing row contains (1, 45100000097, 2025-11-01, 191.5, 31, 8286.21, 621.47, 8908.68, 2025-12-15).
+--- T10 a second outage on the same feeder overlapping an existing one (exclusion constraint on tstzrange)
+psql:03_constraint_tests.sql:43: ERROR:  conflicting key value violates exclusion constraint "outage_no_overlap"
+DETAIL:  Key (feeder_id, tstzrange(started_at, restored_at))=(15, ["2025-11-01 00:31:03.21472+01","2025-11-01 01:31:03.21472+01")) conflicts with existing key (feeder_id, tstzrange(started_at, restored_at))=(15, ["2025-11-01 00:01:03.21472+01","2025-11-01 13:41:26.908836+01")).
+--- T11 outage restored before it started (CHECK)
+psql:03_constraint_tests.sql:46: ERROR:  new row for relation "outage" violates check constraint "outage_restored_after_start"
+DETAIL:  Failing row contains (39762, 1, 2026-11-20 10:00:00+01, 2026-11-20 09:00:00+01, FAULT).
+--- T12 delete a customer who still has meters (FOREIGN KEY, ON DELETE RESTRICT by default)
+psql:03_constraint_tests.sql:49: ERROR:  update or delete on table "customer" violates foreign key constraint "meter_customer_id_fkey" on table "meter"
+DETAIL:  Key (customer_id)=(1) is still referenced from table "meter".
+--- T13 badly formed account number (CHECK ^VG[0-9]{10}$)
+psql:03_constraint_tests.sql:52: ERROR:  new row for relation "customer" violates check constraint "customer_account_no_check"
+DETAIL:  Failing row contains (40001, VG-123      , Test Person, null, R2, 1, 1 Test Street, 2026-11-13 09:02:12.799127+01).
+--- CONTROL valid vend of 10,000 naira: the database computes VAT, kWh, tariff and token (then rolled back)
+BEGIN
+  meter_no   |  amount  |  vat   | tariff_id |  kwh   | token_digits 
+-------------+----------+--------+-----------+--------+--------------
+ 45100000291 | 10000.00 | 697.67 |        16 | 139.95 |           20
+(1 row)
+
+INSERT 0 1
+ band | customer_class | rate_per_kwh | valid_during  
+------+----------------+--------------+---------------
+ B    | R2             |        66.47 | [2026-07-01,)
+(1 row)
+
+ROLLBACK

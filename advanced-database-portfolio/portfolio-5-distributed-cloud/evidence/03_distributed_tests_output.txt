@@ -1,0 +1,177 @@
+
+==================================================================================================
+E1  SHARD ROUTING - October consumption of meter 45100000097 (customer portal)
+==================================================================================================
+[   0.01s] SQL> SELECT meter_no, max(kwh_total) - min(kwh_total) AS october_kwh, count(*) AS readings FROM readings WHERE meter_no = '45100000097' AND read_at >= '2026-10-01 00:00+01' AN
+        45100000097 | 193.3 | 31
+        GroupAggregate
+          ->  Foreign Scan on voltgrid_dist.readings_b readings
+                Remote SQL: SELECT meter_no, kwh_total FROM public.reading_shard WHERE ((read_at >= '2026-10-01 00:00:00+01')) AND ((read_at < '2026-11-01 00:
+[   0.03s] hash(meter_no) sends the query to ONE shard; median 0.46 ms
+[   0.19s] shard_a :5434 holds 1,296,147 readings of 3,473 meters
+[   0.38s] shard_b :5435 holds 1,348,487 readings of 3,613 meters
+
+==================================================================================================
+E2  SCATTER-GATHER - readings received from band E meters on 11 Nov, per business unit (field-operations dashboard)
+==================================================================================================
+[   0.38s] SQL> SELECT bu_code, count(*) AS readings_11_nov FROM readings WHERE band = 'E' AND read_at = '2026-11-11 00:00+01' GROUP BY bu_code ORDER BY bu_code
+        ABK | 60
+        IBN | 62
+        IBS | 68
+        IKD | 63
+        IKJ | 78
+        OGB | 31
+        OTA | 57
+        OYO | 26
+        GroupAggregate
+                ->  Append
+                      ->  Async Foreign Scan on voltgrid_dist.readings_a readings_1
+                            Remote SQL: SELECT bu_code FROM public.reading_shard WHERE ((band = 'E')) AND ((read_at = '2026-11-11 00:00:00+01'))
+                      ->  Async Foreign Scan on voltgrid_dist.readings_b readings_2
+                            Remote SQL: SELECT bu_code FROM public.reading_shard WHERE ((band = 'E')) AND ((read_at = '2026-11-11 00:00:00+01'))
+[   1.46s] no meter_no in the filter -> BOTH shards are asked, in parallel (Async Foreign Scan): 155.63 ms
+
+==================================================================================================
+E3  DISTRIBUTED AGGREGATION - October energy per business unit (max - min per meter, then sum)
+==================================================================================================
+[   2.74s] partition-wise aggregate OFF - every October reading travels to the coordinator:
+          ->  HashAggregate
+                ->  HashAggregate
+                      ->  Append
+                            ->  Async Foreign Scan on voltgrid_dist.readings_a readings_1
+                                  Remote SQL: SELECT meter_no, kwh_total, bu_code FROM public.reading_shard WHERE ((read_at >= '2026-10-01 00:00:00+01')) AND 
+                            ->  Async Foreign Scan on voltgrid_dist.readings_b readings_2
+                                  Remote SQL: SELECT meter_no, kwh_total, bu_code FROM public.reading_shard WHERE ((read_at >= '2026-10-01 00:00:00+01')) AND 
+[   3.42s] partition-wise aggregate ON - GROUP BY meter_no runs on each shard (the shard key is in the GROUP BY):
+          ->  HashAggregate
+                ->  Append
+                      ->  Async Foreign Scan
+                            Relations: Aggregate on (voltgrid_dist.readings_a readings)
+                            Remote SQL: SELECT meter_no, bu_code, (max(kwh_total) - min(kwh_total)) FROM public.reading_shard WHERE ((read_at >= '2026-10-01 0
+                      ->  Async Foreign Scan
+                            Relations: Aggregate on (voltgrid_dist.readings_b readings_1)
+                            Remote SQL: SELECT meter_no, bu_code, (max(kwh_total) - min(kwh_total)) FROM public.reading_shard WHERE ((read_at >= '2026-10-01 0
+[   3.91s] 8 rows | median: push-down OFF 260 ms | ON 139 ms | single-node partitioned table 67 ms | same answer as single node: True
+
+==================================================================================================
+E4  BALANCE - hash on meter_no vs sharding by state (Lagos + Ogun on one shard, Oyo on the other)
+==================================================================================================
+[   3.91s] SQL> SELECT CASE WHEN tableoid = 'readings_a'::regclass THEN 'hash shard_a' ELSE 'hash shard_b' END AS shard, count(*) AS readings, round(100.0 * count(*) / sum(count(*)) OVER
+        hash shard_a | 1296147 | 49.0
+        hash shard_b | 1348487 | 51.0
+[   5.15s] SQL> SELECT CASE WHEN bu_code IN ('IKJ','IKD','OTA','ABK') THEN 'state shard: Lagos + Ogun' ELSE 'state shard: Oyo' END AS shard, count(*) AS readings, round(100.0 * count(*) 
+        state shard: Lagos + Ogun | 1585879 | 60.0
+        state shard: Oyo | 1058755 | 40.0
+[   7.25s] hash spreads the load almost evenly; a geographic split follows the customer base and is uneven
+
+==================================================================================================
+E5  AVAILABILITY - shard_b goes down
+==================================================================================================
+[   7.25s] $ pg_ctl stop shard_b (-m fast)
+        waiting for server to shut down.... done
+        server stopped
+[   7.47s] portal, meter on shard_a: SQL> SELECT count(*) AS readings_of_meter_on_shard_a FROM readings WHERE meter_no = '45100001940'
+        375
+[   7.47s] portal, meter on shard_b: SQL> SELECT count(*) FROM readings WHERE meter_no = '45100000097'
+[   7.47s] !! portal, meter on shard_b: fails: could not connect to server "srv_shard_b"
+[   7.47s] IKJ business-unit report: SQL> SELECT count(*) FROM readings WHERE bu_code = 'IKJ' AND read_at >= '2026-11-01 00:00+01'
+[   7.48s] !! IKJ business-unit report: fails: could not connect to server "srv_shard_b"
+[   7.48s] -> with hash sharding EVERY business unit has meters on both shards, so every area-wide report fails;
+[   7.48s]    half of the individual meters stay available. (A geographic shard key isolates failures by area instead.)
+[   7.48s] $ pg_ctl start shard_b
+        waiting for server to start.... done
+        server started
+[   7.61s] after restart: SQL> SELECT count(*) AS all_readings FROM readings
+        2644634
+
+==================================================================================================
+E6  STREAMING REPLICATION - primary 5432 -> replica1 5433 (immediate) and replica_delayed 5436 (30 s late)
+==================================================================================================
+[   8.66s] primary: SQL> SELECT application_name, state, sync_state, pg_wal_lsn_diff(sent_lsn, replay_lsn) AS bytes_not_applied, replay_lag FROM pg_stat_replication ORDER BY 1
+        replica1 | streaming | async | 0 | None
+        replica_delayed | streaming | async | 0 | None
+[   8.71s] commit on primary -> visible on replica1, 20 trials: median 0.90 ms, max 1.26 ms
+[   8.71s] replica1: SQL> UPDATE voltgrid.tariff SET rate_per_kwh = 1 WHERE tariff_id = 1
+[   8.71s] !! standby rejects writes: cannot execute UPDATE in a read-only transaction
+
+==================================================================================================
+E7  HUMAN ERROR - an operator meant to delete the demo payments but forgot the WHERE clause
+==================================================================================================
+[   8.74s] payments before: 76,273 rows, 27,378,599,409.53 naira
+[   8.74s] primary (the mistake): SQL> DELETE FROM voltgrid.payment
+[   8.98s] replica1 200 ms later: SQL> SELECT count(*) AS payments_on_replica1 FROM voltgrid.payment
+        0
+[   9.00s] -> ordinary replication copies the mistake to the standby at once: it protects against hardware failure, not human error
+[   9.00s] replica_delayed: SQL> SELECT count(*) AS payments_on_replica_delayed FROM voltgrid.payment
+        76273
+[   9.01s] DBA, within 30 s: SQL> SELECT pg_wal_replay_pause()
+        
+[   9.01s] replica_delayed: SQL> SELECT pg_get_wal_replay_pause_state() AS replay, now() - pg_last_xact_replay_timestamp() AS applied_up_to_ago
+        pause requested | 0:01:32.173238
+[  18.40s] copied 76,273 rows back from the delayed standby; primary now 76,273 rows, 27,378,599,409.53 naira -> fully recovered 9.7 s after the mistake
+[  18.40s] replica_delayed: SQL> SELECT pg_wal_replay_resume()
+        
+[  18.41s] the delayed standby will now apply the DELETE and then the re-insert, 30 s late, and end up identical to the primary
+
+==================================================================================================
+E8  COMMIT LATENCY - 300 commits each: async vs synchronous replication to replica1
+==================================================================================================
+[  19.41s] primary: SQL> SELECT application_name, sync_state FROM pg_stat_replication ORDER BY 1
+        replica1 | sync
+        replica_delayed | async
+[  20.06s] synchronous_commit=local        median 0.484 ms, p95 0.706 ms  (async - standby may lag)
+[  20.06s] synchronous_commit=on           median 0.786 ms, p95 1.350 ms  (standby has flushed WAL)
+[  20.06s] synchronous_commit=remote_apply median 0.696 ms, p95 1.069 ms  (standby has applied it)
+[  20.06s] the delayed standby is NOT listed as synchronous: with a 30 s apply delay, remote_apply commits would wait 30 s
+
+==================================================================================================
+E9  CAP IN PRACTICE - synchronous replication, standby unreachable
+==================================================================================================
+[  20.06s] $ pg_ctl stop replica1 (-m fast)
+        waiting for server to shut down.... done
+        server stopped
+[  23.17s] primary: SQL> SELECT pid, wait_event_type, wait_event, state FROM pg_stat_activity WHERE pid = 1252
+        1252 | IPC | SyncRep | active
+[  23.17s] -> the sale cannot be confirmed: the primary waits for a standby that cannot answer (Consistency over Availability)
+[  23.17s] operator cancels the wait: SQL> SELECT pg_cancel_backend(1252)
+        True
+[  23.17s] writer: returned after 3.0s; notices: ['WARNING:  canceling wait for synchronous replication due to user request\nDETAIL:  The transaction has already committed locally, but might not have been replicated to the standby.']
+[  23.18s] sync requirement removed -> primary accepts writes again in async mode (Availability over Consistency)
+[  23.18s] primary: SQL> INSERT INTO voltgrid.replication_probe (note) VALUES ('async while standby down') RETURNING id
+        922
+[  23.18s] $ pg_ctl start replica1
+        waiting for server to start.... done
+        server started
+[  25.40s] primary: SQL> SELECT application_name, state, pg_wal_lsn_diff(sent_lsn, replay_lsn) AS bytes_not_applied FROM pg_stat_replication ORDER BY 1
+        replica1 | streaming | 0
+        replica_delayed | streaming | 45326448
+[  25.40s] -> replica1 reconnected through its replication slot and caught up
+
+==================================================================================================
+E10 FAILOVER - primary crashes, replica1 is promoted
+==================================================================================================
+[  25.48s] primary just before crash: 923 probe rows, newest id 923; 76,273 payments
+[  25.48s] $ pg_ctl stop primary (-m immediate)
+        waiting for server to shut down.... done
+        server stopped
+[  25.59s] !! primary unreachable: connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
+[  25.59s] replica1: SQL> SELECT pg_promote(wait => true)
+        True
+[  25.69s] promotion took 101 ms
+[  25.69s] new primary: SQL> SELECT pg_is_in_recovery() AS still_standby
+        False
+[  25.69s] new primary: SQL> INSERT INTO voltgrid.replication_probe (note) VALUES ('first write after failover') RETURNING id
+        925
+[  25.70s] rows committed on old primary present on new primary: 923 of 923; payments 76,273 of 76,273 -> no committed data lost
+[  25.70s] -> replica_delayed still follows the OLD primary: its primary_conninfo must be re-pointed to the new one
+
+==================================================================================================
+CLEAN-UP - restore lab topology
+==================================================================================================
+[  25.70s] $ pg_ctl stop replica1 (-m fast)
+        waiting for server to shut down.... done
+        server stopped
+[  25.81s] $ pg_ctl start primary
+        waiting for server to start.... done
+        server started
+[  26.23s] re-run 01_setup_cluster.sh to rebuild the standbys (production: pg_rewind the old primary into the new standby)

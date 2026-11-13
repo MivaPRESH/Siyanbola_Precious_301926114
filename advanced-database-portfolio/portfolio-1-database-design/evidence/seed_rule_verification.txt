@@ -1,0 +1,68 @@
+SET
+=== Rule checks: violations (must all be 0) ===
+                            rule                             | violations 
+-------------------------------------------------------------+------------
+ vends on a meter that is not prepaid                        |          0
+ vend tariff is not the band/class tariff valid that day     |          0
+ vend kWh <> (amount - VAT) / rate                           |          0
+ meter on a transformer outside the customer's business unit |          0
+ cumulative register reading lower than the previous one     |          0
+ bill.paid different from the sum of its payments            |          0
+ two outages of one feeder overlapping                       |          0
+(7 rows)
+
+=== Shape of the data ===
+ meter_type |  status   | count 
+------------+-----------+-------
+ POSTPAID   | ACTIVE    |  6884
+ POSTPAID   | REMOVED   |    31
+ POSTPAID   | SUSPENDED |   171
+ PREPAID    | ACTIVE    | 33850
+ PREPAID    | REMOVED   |   181
+ PREPAID    | SUSPENDED |   883
+(6 rows)
+
+ channel | vends  | pct  | avg_naira 
+---------+--------+------+-----------
+ APP     | 288675 | 35.0 |     14647
+ BANK    | 164626 | 20.0 |     14686
+ USSD    | 164206 | 19.9 |     14713
+ POS     | 123233 | 15.0 |     14691
+ AGENT   |  83052 | 10.1 |     14600
+(5 rows)
+
+ band | kwh_per_1000_naira | vends  
+------+--------------------+--------
+ A    |                4.3 | 166659
+ B    |               14.3 | 218966
+ C    |               18.4 | 274574
+ D    |               21.2 | 106717
+ E    |               28.3 |  56876
+(5 rows)
+
+ band | avg_outage_hours | outages 
+------+------------------+---------
+ A    |              2.5 |    5420
+ B    |              6.0 |   11468
+ C    |             10.0 |   14293
+ D    |             14.0 |    5711
+ E    |             17.6 |    2865
+(5 rows)
+
+       partition       | readings 
+-----------------------+----------
+ meter_reading_2025_11 |   210436
+ meter_reading_2025_12 |   217393
+ meter_reading_2026_01 |   217455
+ meter_reading_2026_02 |   196474
+ meter_reading_2026_03 |   217508
+ meter_reading_2026_04 |   210400
+ meter_reading_2026_05 |   217462
+ meter_reading_2026_06 |   210499
+ meter_reading_2026_07 |   217455
+ meter_reading_2026_08 |   217463
+ meter_reading_2026_09 |   210424
+ meter_reading_2026_10 |   217469
+ meter_reading_2026_11 |    84196
+(13 rows)
+

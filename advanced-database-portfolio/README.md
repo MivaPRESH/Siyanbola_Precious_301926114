@@ -1,0 +1,70 @@
+# MIT 8103 Advanced Database Systems — Practical Portfolio
+
+**Student:** Precious Siyanbola · **Student ID:** 301926114 · **GitHub:** `<your-username>` · Master of Information Technology, Miva Open University · 2026/2027 First Semester
+
+**Case study:** *VoltGrid Power*, a simulated electricity distribution company serving Lagos, Ogun and Oyo through 8 business units, 120 feeders and 1,200 transformers.
+- **Users:** customers (prepaid and postpaid), vending partners (banks, POS, USSD, agents), billing officers, revenue-protection and field technicians, the control room, finance and management.
+- **Major data:** business units, feeders with tariff bands A–E, transformers, dated tariff versions, customers, meters, prepaid token sales, daily meter readings, monthly bills, payments and outages.
+- **Key operations:** sell a token exactly once per payment, at the right tariff; read and bill postpaid meters; take payments from several channels; log outages and report hours of supply to the regulator; find meters that may be bypassed.
+
+Full statement: [Portfolio 1 README](portfolio-1-database-design/README.md).
+
+All five activities use the same case study and data set: 40,000 customers, 42,000 meters, 823,792 token sales, 2,644,634 meter readings (13 monthly partitions), 85,032 bills, 76,272 payments and 39,763 outages.
+
+## Portfolio map
+
+| # | Activity | Main evidence | Headline result |
+|---|---|---|---|
+| 1 | [Database design and modelling](portfolio-1-database-design/) | ERD, 11 tables + monthly partitions, pricing trigger, exclusion constraints on tariff dates and outages, idempotent `payment_ref`; 3NF/BCNF | 13 invalid operations all rejected; valid sale priced by the database; 0 rule violations in the seed |
+| 2 | [Query processing and optimisation](portfolio-2-query-optimisation/) | 5 queries, 15 saved plans, benchmark harness, chart | 3.4× to ~15,000×; a sargable rewrite pruned 13 partitions to 1; an exclusion constraint's index reused |
+| 3 | [Transactions and concurrency](portfolio-3-transactions-concurrency/) | 6 transaction cases (outbox, overpayment, savepoints, tariff versions), 6 concurrency scenarios with real sessions | duplicate webhook → same token; lost update of ₦100,000 prevented; DETACH PARTITION stall 1,963 ms → 7 ms with CONCURRENTLY |
+| 4 | [NoSQL and advanced data models](portfolio-4-nosql/) | Redis rate limit, idempotency guard, bitmaps, status board; JSONB work orders; MongoDB API | 30 requests → 5 allowed; 7 days of meter reporting in 7,560 bytes; GIN 3.2 → 0.49 ms |
+| 5 | [Distributed and cloud databases](portfolio-5-distributed-cloud/) | 5-node lab: hash sharding, sync/async replication, delayed standby, 10 experiments, cloud design | accidental `DELETE` of 76,273 payments recovered from the delayed standby in 9.7 s; failover in 101 ms, 0 rows lost |
+
+## Environment
+
+| Component | Version |
+|---|---|
+| PostgreSQL | 16 (primary, hot standby, delayed standby, 2 hash shards; `btree_gist`, `postgres_fdw`) |
+| Redis | 7.0 |
+| Python | 3 with psycopg2, redis, pymongo, mongomock, matplotlib |
+| Graphviz | ERD and topology diagrams |
+| OS | Ubuntu 24.04 |
+
+## Run everything from scratch
+
+```bash
+createdb voltgrid
+psql -d voltgrid -f portfolio-1-database-design/01_schema.sql
+psql -d voltgrid -f portfolio-1-database-design/02_seed_data.sql
+psql -d voltgrid -f portfolio-1-database-design/03_constraint_tests.sql
+psql -d voltgrid -f portfolio-1-database-design/04_verify_seed_rules.sql
+python3 portfolio-2-query-optimisation/run_benchmark.py
+psql -d voltgrid -f portfolio-3-transactions-concurrency/00_demo_setup.sql
+psql -d voltgrid -e -f portfolio-3-transactions-concurrency/01_commit_rollback_savepoint.sql
+python3 portfolio-3-transactions-concurrency/concurrency_demo.py
+python3 portfolio-4-nosql/redis_keyvalue.py
+psql -d voltgrid -f portfolio-4-nosql/document_model.sql && psql -d voltgrid -f portfolio-4-nosql/document_queries.sql
+python3 portfolio-4-nosql/mongo_work_orders.py
+sudo bash portfolio-5-distributed-cloud/01_setup_cluster.sh
+psql -d voltgrid -f portfolio-5-distributed-cloud/02_sharding.sql
+sudo python3 portfolio-5-distributed-cloud/03_distributed_tests.py
+```
+
+Each folder's README explains what was implemented, how it was tested and what the results mean. Raw outputs are in each `evidence/` folder.
+
+## Repository structure
+
+```
+advanced-database-portfolio/
+├── portfolio-1-database-design/           schema, seed data, constraint tests, seed-rule checks, ERD (dot/png/svg)
+├── portfolio-2-query-optimisation/        queries, two optimisation rounds, benchmark harness, plans/
+├── portfolio-3-transactions-concurrency/  demo setup, transaction cases, concurrency scenarios
+├── portfolio-4-nosql/                     Redis, JSONB work orders, MongoDB-API script
+├── portfolio-5-distributed-cloud/         cluster setup, hash sharding, distributed experiments, topology
+└── README.md
+```
+
+## Academic integrity and AI use
+
+All data is synthetic and generated by the scripts in this repository; no real customer data is used. AI use is declared in the LMS documentation.

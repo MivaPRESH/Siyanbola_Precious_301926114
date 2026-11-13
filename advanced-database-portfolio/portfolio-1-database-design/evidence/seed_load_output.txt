@@ -1,0 +1,54 @@
+SET
+ setseed 
+---------
+ 
+(1 row)
+
+Timing is on.
+INSERT 0 8
+Time: 1.446 ms
+INSERT 0 120
+Time: 2.554 ms
+INSERT 0 1200
+Time: 10.292 ms
+INSERT 0 40
+Time: 2.299 ms
+INSERT 0 40000
+Time: 748.591 ms
+UPDATE 40000
+Time: 557.019 ms
+INSERT 0 42000
+Time: 743.263 ms
+INSERT 0 823792
+Time: 53618.165 ms (00:53.618)
+UPDATE 1054
+Time: 17.978 ms
+UPDATE 212
+Time: 18.929 ms
+INSERT 0 2644634
+Time: 32141.352 ms (00:32.141)
+INSERT 0 85032
+Time: 5958.899 ms (00:05.959)
+INSERT 0 76272
+Time: 853.536 ms
+INSERT 0 39757
+Time: 1722.521 ms (00:01.723)
+INSERT 0 3
+Time: 1.162 ms
+Timing is off.
+ANALYZE
+      tbl      |  count  
+---------------+---------
+ business_unit |       8
+ tariff        |      40
+ feeder        |     120
+ transformer   |    1200
+ outage        |   39760
+ meter         |   42000
+ customer      |   40000
+ payment       |   76272
+ bill          |   85032
+ vend          |  823792
+ meter_reading | 2644634
+(11 rows)
+

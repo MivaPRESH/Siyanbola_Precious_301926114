@@ -1,0 +1,56 @@
+                                         Partitioned table "voltgrid.meter_reading"
+  Column   |           Type           | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+-----------+--------------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ meter_no  | character(11)            |           | not null |         | extended |             |              | 
+ read_at   | timestamp with time zone |           | not null |         | plain    |             |              | 
+ kwh_total | numeric(11,1)            |           | not null |         | main     |             |              | 
+Partition key: RANGE (read_at)
+Indexes:
+    "meter_reading_pkey" PRIMARY KEY, btree (meter_no, read_at)
+Check constraints:
+    "meter_reading_kwh_total_check" CHECK (kwh_total >= 0::numeric)
+Foreign-key constraints:
+    "meter_reading_meter_no_fkey" FOREIGN KEY (meter_no) REFERENCES voltgrid.meter(meter_no)
+Partitions: voltgrid.meter_reading_2025_11 FOR VALUES FROM ('2025-11-01 00:00:00+01') TO ('2025-12-01 00:00:00+01'),
+            voltgrid.meter_reading_2025_12 FOR VALUES FROM ('2025-12-01 00:00:00+01') TO ('2026-01-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_01 FOR VALUES FROM ('2026-01-01 00:00:00+01') TO ('2026-02-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_02 FOR VALUES FROM ('2026-02-01 00:00:00+01') TO ('2026-03-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_03 FOR VALUES FROM ('2026-03-01 00:00:00+01') TO ('2026-04-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_04 FOR VALUES FROM ('2026-04-01 00:00:00+01') TO ('2026-05-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_05 FOR VALUES FROM ('2026-05-01 00:00:00+01') TO ('2026-06-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_06 FOR VALUES FROM ('2026-06-01 00:00:00+01') TO ('2026-07-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_07 FOR VALUES FROM ('2026-07-01 00:00:00+01') TO ('2026-08-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_08 FOR VALUES FROM ('2026-08-01 00:00:00+01') TO ('2026-09-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_09 FOR VALUES FROM ('2026-09-01 00:00:00+01') TO ('2026-10-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_10 FOR VALUES FROM ('2026-10-01 00:00:00+01') TO ('2026-11-01 00:00:00+01'),
+            voltgrid.meter_reading_2026_11 FOR VALUES FROM ('2026-11-01 00:00:00+01') TO ('2026-12-01 00:00:00+01')
+
+                                    Table "voltgrid.vend"
+   Column    |           Type           | Collation | Nullable |           Default            
+-------------+--------------------------+-----------+----------+------------------------------
+ vend_id     | bigint                   |           | not null | generated always as identity
+ meter_no    | character(11)            |           | not null | 
+ payment_ref | character varying(30)    |           | not null | 
+ channel     | character varying(5)     |           | not null | 
+ amount      | numeric(10,2)            |           | not null | 
+ vat         | numeric(10,2)            |           | not null | 
+ tariff_id   | smallint                 |           | not null | 
+ kwh         | numeric(9,2)             |           | not null | 
+ token       | character(20)            |           | not null | 
+ vended_at   | timestamp with time zone |           | not null | now()
+Indexes:
+    "vend_pkey" PRIMARY KEY, btree (vend_id)
+    "vend_payment_ref_key" UNIQUE CONSTRAINT, btree (payment_ref)
+    "vend_token_key" UNIQUE CONSTRAINT, btree (token)
+Check constraints:
+    "vend_amount_check" CHECK (amount >= 500::numeric AND amount <= 1000000::numeric)
+    "vend_channel_check" CHECK (channel::text = ANY (ARRAY['APP'::character varying, 'BANK'::character varying, 'POS'::character varying, 'USSD'::character varying, 'AGENT'::character varying]::text[]))
+    "vend_kwh_check" CHECK (kwh > 0::numeric)
+    "vend_token_check" CHECK (token ~ '^[0-9]{20}$'::text)
+    "vend_vat_7_5_pct" CHECK (vat = round(amount * 0.075 / 1.075, 2))
+Foreign-key constraints:
+    "vend_meter_no_fkey" FOREIGN KEY (meter_no) REFERENCES voltgrid.meter(meter_no)
+    "vend_tariff_id_fkey" FOREIGN KEY (tariff_id) REFERENCES voltgrid.tariff(tariff_id)
+Triggers:
+    trg_vend_price BEFORE INSERT ON voltgrid.vend FOR EACH ROW EXECUTE FUNCTION voltgrid.vend_price()
+

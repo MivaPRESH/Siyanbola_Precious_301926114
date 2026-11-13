@@ -1,0 +1,79 @@
+-- Q4 [round2] Revenue protection: active prepaid meters with NO token bought in the last 90 days (possible bypass)
+-- random_page_cost=1.1; median of 7 warm runs: 89.649 ms (min 80.594, max 107.474); planning 1.506 ms; shared buffers touched: 106985
+-- SQL executed:
+--   SELECT vm.bu_code, vm.feeder_code, vm.meter_no, vm.full_name, lv.last_vend
+--   FROM   v_meter vm
+--   CROSS  JOIN LATERAL (SELECT max(x.vended_at) AS last_vend FROM vend x WHERE x.meter_no = vm.meter_no) lv
+--   WHERE  vm.meter_type = 'PREPAID' AND vm.status = 'ACTIVE'
+--   AND    NOT EXISTS (SELECT 1 FROM vend v WHERE v.meter_no = vm.meter_no
+--                      AND v.vended_at >= timestamptz '2026-11-12 23:59+01' - interval '90 days')
+--   ORDER  BY lv.last_vend NULLS FIRST, vm.meter_no
+--   LIMIT  50;
+
+Limit  (cost=20745.98..20746.11 rows=50 width=47) (actual time=81.633..84.226 rows=50 loops=1)
+  Buffers: shared hit=106985
+  ->  Sort  (cost=20745.98..20770.13 rows=9658 width=47) (actual time=81.632..84.221 rows=50 loops=1)
+        Sort Key: ($1) NULLS FIRST, me.meter_no
+        Sort Method: top-N heapsort  Memory: 33kB
+        Buffers: shared hit=106985
+        ->  Nested Loop  (cost=2455.15..20425.15 rows=9658 width=47) (actual time=10.487..83.758 rows=1154 loops=1)
+              Buffers: shared hit=106985
+              ->  Gather  (cost=2454.62..15147.23 rows=9658 width=39) (actual time=10.478..79.307 rows=1154 loops=1)
+                    Workers Planned: 1
+                    Workers Launched: 1
+                    Buffers: shared hit=103522
+                    ->  Hash Join  (cost=1454.62..13181.43 rows=5681 width=39) (actual time=11.071..70.645 rows=577 loops=2)
+                          Hash Cond: (f.bu_id = b.bu_id)
+                          Buffers: shared hit=103522
+                          ->  Hash Join  (cost=1453.44..13157.44 rows=5681 width=37) (actual time=11.009..70.437 rows=577 loops=2)
+                                Hash Cond: (dt.feeder_id = f.feeder_id)
+                                Buffers: shared hit=103472
+                                ->  Hash Join  (cost=1449.74..13138.31 rows=5681 width=29) (actual time=10.932..70.169 rows=577 loops=2)
+                                      Hash Cond: (me.dt_id = dt.dt_id)
+                                      Buffers: shared hit=103470
+                                      ->  Nested Loop Anti Join  (cost=1414.74..13088.34 rows=5681 width=31) (actual time=10.681..69.648 rows=577 loops=2)
+                                            Buffers: shared hit=103439
+                                            ->  Hash Join  (cost=1414.31..3054.04 rows=19921 width=31) (actual time=10.563..20.352 rows=16925 loops=2)
+                                                  Hash Cond: (c.customer_id = me.customer_id)
+                                                  Buffers: shared hit=1839
+                                                  ->  Parallel Seq Scan on customer c  (cost=0.00..1352.29 rows=23529 width=19) (actual time=0.016..1.878 rows=20000 loops=2)
+                                                        Buffers: shared hit=1117
+                                                  ->  Hash  (cost=991.00..991.00 rows=33865 width=20) (actual time=10.410..10.411 rows=33850 loops=2)
+                                                        Buckets: 65536  Batches: 1  Memory Usage: 2231kB
+                                                        Buffers: shared hit=722
+                                                        ->  Seq Scan on meter me  (cost=0.00..991.00 rows=33865 width=20) (actual time=0.006..5.169 rows=33850 loops=2)
+                                                              Filter: (((meter_type)::text = 'PREPAID'::text) AND ((status)::text = 'ACTIVE'::text))
+                                                              Rows Removed by Filter: 8150
+                                                              Buffers: shared hit=722
+                                            ->  Index Only Scan using ix_vend_meter_time on vend v  (cost=0.43..0.70 rows=7 width=12) (actual time=0.003..0.003 rows=1 loops=33850)
+                                                  Index Cond: ((meter_no = me.meter_no) AND (vended_at >= ('2026-11-12 23:59:00+01'::timestamp with time zone - '90 days'::interval)))
+                                                  Heap Fetches: 47
+                                                  Buffers: shared hit=101600
+                                      ->  Hash  (cost=20.00..20.00 rows=1200 width=6) (actual time=0.231..0.231 rows=1200 loops=2)
+                                            Buckets: 2048  Batches: 1  Memory Usage: 61kB
+                                            Buffers: shared hit=16
+                                            ->  Seq Scan on transformer dt  (cost=0.00..20.00 rows=1200 width=6) (actual time=0.016..0.108 rows=1200 loops=2)
+                                                  Buffers: shared hit=16
+                                ->  Hash  (cost=2.20..2.20 rows=120 width=12) (actual time=0.067..0.067 rows=120 loops=2)
+                                      Buckets: 1024  Batches: 1  Memory Usage: 14kB
+                                      Buffers: shared hit=2
+                                      ->  Seq Scan on feeder f  (cost=0.00..2.20 rows=120 width=12) (actual time=0.006..0.015 rows=120 loops=2)
+                                            Buffers: shared hit=2
+                          ->  Hash  (cost=1.08..1.08 rows=8 width=6) (actual time=0.019..0.020 rows=8 loops=2)
+                                Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                Buffers: shared hit=2
+                                ->  Seq Scan on business_unit b  (cost=0.00..1.08 rows=8 width=6) (actual time=0.009..0.010 rows=8 loops=2)
+                                      Buffers: shared hit=2
+              ->  Result  (cost=0.53..0.54 rows=1 width=8) (actual time=0.003..0.003 rows=1 loops=1154)
+                    Buffers: shared hit=3463
+                    InitPlan 1 (returns $1)
+                      ->  Limit  (cost=0.42..0.53 rows=1 width=8) (actual time=0.003..0.003 rows=1 loops=1154)
+                            Buffers: shared hit=3463
+                            ->  Index Only Scan using ix_vend_meter_time on vend x  (cost=0.42..3.17 rows=27 width=8) (actual time=0.003..0.003 rows=1 loops=1154)
+                                  Index Cond: ((meter_no = me.meter_no) AND (vended_at IS NOT NULL))
+                                  Heap Fetches: 0
+                                  Buffers: shared hit=3463
+Planning:
+  Buffers: shared hit=36
+Planning Time: 1.570 ms
+Execution Time: 84.295 ms

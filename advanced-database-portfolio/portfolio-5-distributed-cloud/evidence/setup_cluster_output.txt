@@ -1,0 +1,25 @@
+== primary: replication settings, restart
+waiting for server to shut down.... done
+server stopped
+waiting for server to start.... done
+server started
+slot replica1_slot
+slot replica_delayed_slot
+== replica1: pg_basebackup -R from primary (port 5433)
+waiting for server to start.... done
+server started
+== replica_delayed: pg_basebackup -R from primary (port 5436)
+waiting for server to start.... done
+server started
+== shard_a on port 5434
+waiting for server to start.... done
+server started
+== shard_b on port 5435
+waiting for server to start.... done
+server started
+== cluster status
+port 5432 : primary (read/write), apply delay 0, /home/claude/pg/primary
+port 5433 : standby (read-only), apply delay 0, /home/claude/pg/replica1
+port 5436 : standby (read-only), apply delay 30s, /home/claude/pg/replica_delayed
+port 5434 : primary (read/write), apply delay 0, /home/claude/pg/shard_a
+port 5435 : primary (read/write), apply delay 0, /home/claude/pg/shard_b

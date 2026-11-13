@@ -1,0 +1,45 @@
+-- Q5 [round2] Regulator report: average daily hours of supply of band A feeders, last 30 days (promise: >= 20 h)
+-- random_page_cost=1.1; median of 7 warm runs: 0.918 ms (min 0.892, max 0.978); planning 0.193 ms; shared buffers touched: 474
+-- SQL executed:
+--   SELECT f.feeder_code, b.bu_code,
+--          round(24 - coalesce(sum(extract(epoch FROM
+--                LEAST(coalesce(o.restored_at, timestamptz '2026-11-12 00:00+01'), timestamptz '2026-11-12 00:00+01')
+--              - GREATEST(o.started_at, timestamptz '2026-10-13 00:00+01'))), 0) / 3600 / 30, 2) AS avg_supply_hours
+--   FROM   feeder f
+--   JOIN   business_unit b ON b.bu_id = f.bu_id
+--   LEFT   JOIN outage o ON o.feeder_id = f.feeder_id
+--                       AND tstzrange(o.started_at, o.restored_at)
+--                        && tstzrange(timestamptz '2026-10-13 00:00+01', timestamptz '2026-11-12 00:00+01')
+--   WHERE  f.band = 'A'
+--   GROUP  BY f.feeder_code, b.bu_code
+--   ORDER  BY avg_supply_hours, f.feeder_code;
+
+Sort  (cost=428.02..428.50 rows=192 width=44) (actual time=0.866..0.869 rows=24 loops=1)
+  Sort Key: (round(('24'::numeric - ((COALESCE(sum(EXTRACT(epoch FROM (LEAST(COALESCE(o.restored_at, '2026-11-12 00:00:00+01'::timestamp with time zone), '2026-11-12 00:00:00+01'::timestamp with time zone) - GREATEST(o.started_at, '2026-10-13 00:00:00+01'::timestamp with time zone)))), '0'::numeric) / '3600'::numeric) / '30'::numeric)), 2)), f.feeder_code
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=474
+  ->  HashAggregate  (cost=416.42..420.74 rows=192 width=44) (actual time=0.844..0.857 rows=24 loops=1)
+        Group Key: f.feeder_code, b.bu_code
+        Batches: 1  Memory Usage: 48kB
+        Buffers: shared hit=474
+        ->  Nested Loop Left Join  (cost=1.46..405.36 rows=632 width=28) (actual time=0.035..0.671 rows=454 loops=1)
+              Buffers: shared hit=474
+              ->  Hash Join  (cost=1.18..3.78 rows=24 width=14) (actual time=0.010..0.027 rows=24 loops=1)
+                    Hash Cond: (f.bu_id = b.bu_id)
+                    Buffers: shared hit=2
+                    ->  Seq Scan on feeder f  (cost=0.00..2.50 rows=24 width=12) (actual time=0.004..0.014 rows=24 loops=1)
+                          Filter: (band = 'A'::bpchar)
+                          Rows Removed by Filter: 96
+                          Buffers: shared hit=1
+                    ->  Hash  (cost=1.08..1.08 rows=8 width=6) (actual time=0.004..0.004 rows=8 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on business_unit b  (cost=0.00..1.08 rows=8 width=6) (actual time=0.001..0.002 rows=8 loops=1)
+                                Buffers: shared hit=1
+              ->  Index Scan using outage_no_overlap on outage o  (cost=0.28..16.47 rows=26 width=18) (actual time=0.017..0.024 rows=19 loops=24)
+                    Index Cond: ((feeder_id = f.feeder_id) AND (tstzrange(started_at, restored_at) && '["2026-10-13 00:00:00+01","2026-11-12 00:00:00+01")'::tstzrange))
+                    Buffers: shared hit=472
+Planning:
+  Buffers: shared hit=8
+Planning Time: 0.175 ms
+Execution Time: 0.893 ms

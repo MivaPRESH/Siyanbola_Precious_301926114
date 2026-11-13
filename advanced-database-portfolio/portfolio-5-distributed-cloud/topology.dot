@@ -1,0 +1,22 @@
+// VoltGrid distributed lab topology (as built and tested) - render: dot -Tpng topology.dot -o topology.png
+digraph topology {
+  graph [rankdir=LR, fontname="Helvetica", nodesep=0.5, ranksep=0.9, bgcolor="white",
+         label="VoltGrid Power - distributed PostgreSQL 16 lab (5 server processes)", labelloc=t, fontsize=16];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#334155"];
+  edge  [fontname="Helvetica", fontsize=9, color="#475569", fontcolor="#334155"];
+  apps    [label="Vending API, customer app,\nbilling, field app", fillcolor="#E2E8F0"];
+  meters  [label="7,087 postpaid meters\n(daily readings)", fillcolor="#E2E8F0"];
+  redis   [label="Redis 7\nrate limits, idempotency,\nbitmaps, status (Portfolio 4)", fillcolor="#FEF3C7"];
+  subgraph cluster_ha { label="Availability and recovery: physical streaming replication"; style="rounded,dashed"; color="#7C3AED"; fontcolor="#7C3AED"; fontname="Helvetica";
+    primary [label="primary :5432\nvoltgrid (read/write)\nshard coordinator (postgres_fdw)", fillcolor="#EDE9FE"];
+    replica [label="replica1 :5433\nhot standby, sync-capable\nfailover target", fillcolor="#F5F3FF"];
+    delayed [label="replica_delayed :5436\nrecovery_min_apply_delay = 30 s\nundo for human error", fillcolor="#F5F3FF"]; }
+  subgraph cluster_shards { label="Scale-out: meter_reading HASH(meter_no) MODULUS 2"; style="rounded,dashed"; color="#0F766E"; fontcolor="#0F766E"; fontname="Helvetica";
+    sa [label="shard_a :5434\nREMAINDER 0\n1,296,147 readings, 3,473 meters", fillcolor="#CCFBF1"];
+    sb [label="shard_b :5435\nREMAINDER 1\n1,348,487 readings, 3,613 meters", fillcolor="#F0FDFA"]; }
+  apps -> redis [label="key-value"]; apps -> primary [label="SQL"]; meters -> primary [label="readings"];
+  primary -> replica [label="WAL streaming\nasync / sync (E8, E9), promote (E10)", penwidth=2, color="#7C3AED"];
+  primary -> delayed [label="WAL streaming,\napplied 30 s late (E7)", style=dashed, color="#7C3AED", fontcolor="#7C3AED"];
+  primary -> sa [label="readings_a", color="#0F766E"];
+  primary -> sb [label="readings_b", color="#0F766E"];
+}

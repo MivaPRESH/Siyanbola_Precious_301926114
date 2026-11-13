@@ -1,0 +1,53 @@
+
+============================================================================================
+Load
+============================================================================================
+inserted 11,592 documents; types: {'DISCONNECTION': 3785, 'INSTALLATION': 4762, 'METER_REPLACEMENT': 212, 'TAMPER_INSPECTION': 2833}
+indexes: ['_id_', 'findings.bypass_1', 'type_1_bu_1_status_1']
+
+============================================================================================
+M1  confirmed bypasses with >= 3 photos per business unit (aggregation pipeline)
+============================================================================================
+   OTA: 27 cases, 15,036 kWh
+   IKJ: 25 cases, 17,046 kWh
+   IBS: 22 cases, 13,296 kWh
+   IKD: 22 cases, 12,876 kWh
+   IBN: 21 cases, 14,202 kWh
+   ABK: 19 cases, 10,470 kWh
+   OGB: 15 cases, 9,420 kWh
+   OYO: 12 cases, 7,674 kWh
+
+============================================================================================
+M2  $unwind the materials array: cable issued per business unit
+============================================================================================
+   ABK 9,104 m, IBN 9,389 m, IBS 8,619 m, IKD 9,394 m, IKJ 13,412 m, OGB 4,978 m, OTA 9,558 m, OYO 4,631 m
+
+============================================================================================
+M3  open disconnections in Ibadan North, projected fields only
+============================================================================================
+   5 open; largest arrears first:
+   {"arrears": 4851017.19, "meter_no": "45101271670", "technician": {"name": "Ms T. Ajayi"}, "_id": "WO-011507"}
+   {"arrears": 3569606.98, "meter_no": "45101157986", "technician": {"name": "Ms T. Ajayi"}, "_id": "WO-011563"}
+   {"arrears": 173490.49, "meter_no": "45103807638", "technician": {"name": "Engr. S. Ogunleye"}, "_id": "WO-011539"}
+
+============================================================================================
+M4  completing a job: update ONLY IF the job is still ASSIGNED (compare-and-set on one document)
+============================================================================================
+   phone A matched=1 modified=1; phone B matched=0 modified=0
+   document now: {"status": "COMPLETED", "completed_by": "VGT-0121", "history": [{"at": "2026-11-12T16:20:00+01:00", "event": "completed on site", "by": "VGT-0121"}], "visits": 1, "_id": "WO-011499"}
+   a single-document update is atomic, so the status filter acts as a compare-and-set (cf. the atomic UPDATE in Portfolio 3, S2):
+   the late phone must re-read the job instead of overwriting the first technician's record
+
+============================================================================================
+M5  index on nested fields
+============================================================================================
+   explain() on mongomock does not show a real plan; on a MongoDB server the query
+   {type:'TAMPER_INSPECTION', 'findings.bypass': true} would use IXSCAN on findings.bypass_1.
+   matching documents: 338
+
+============================================================================================
+Cross-check: MongoDB-API answers vs PostgreSQL JSONB answers
+============================================================================================
+--------------------------------------------------------------------------------------------
+  M1 same bypass cases and kWh per business unit: True
+  M2 same cable metres per business unit: True

@@ -1,0 +1,21 @@
+SET
+          table_name           | exact_rows 
+-------------------------------+------------
+ business_unit                 |          8
+ tariff                        |         40
+ feeder                        |        120
+ transformer                   |       1200
+ outage                        |      39760
+ meter                         |      42000
+ customer                      |      40000
+ payment                       |      76272
+ bill                          |      85032
+ vend                          |     823792
+ meter_reading (13 partitions) |    2644634
+(11 rows)
+
+ database_size 
+---------------
+ 554 MB
+(1 row)
+

@@ -1,0 +1,56 @@
+
+============================================================================================
+0. Environment
+============================================================================================
+Redis 7.0.15 - removing VoltGrid demo keys only
+
+============================================================================================
+1. RATE LIMIT - at most 5 token requests per meter per 60 s (sliding window, one Lua script)
+============================================================================================
+   a misbehaving POS terminal sends 30 requests for meter 45100000291 in the same instant:
+   allowed=5, refused (HTTP 429)=25; another meter is not affected: 1
+redis> ZCARD rl:vend:45100000291 / PTTL
+       (5, 59987)
+   the check and the insert run in one script, so 30 simultaneous requests cannot all see '4 so far'
+
+============================================================================================
+2. IDEMPOTENCY GUARD AT THE API EDGE - the same payment notification arrives 3 times
+============================================================================================
+   SET idem:DEMO-REDIS-1794558023 <worker> NX EX 86400 from 3 workers at once -> [(1, True), (2, False), (3, False)]
+   exactly one worker calls the token engine: True; key owner = worker-1, TTL 86400 s
+   Redis only filters duplicates early; the UNIQUE payment_ref in PostgreSQL (Portfolio 3, S1) remains the final guarantee
+
+============================================================================================
+3. WHICH METERS REPORTED? - one bitmap per day, one bit per postpaid meter (last 7 complete days)
+============================================================================================
+   2026-11-05: BITCOUNT  7013  (SQL count  7013)  memory 1080 bytes
+   2026-11-06: BITCOUNT  7012  (SQL count  7012)  memory 1080 bytes
+   2026-11-07: BITCOUNT  7012  (SQL count  7012)  memory 1080 bytes
+   2026-11-08: BITCOUNT  7023  (SQL count  7023)  memory 1080 bytes
+   2026-11-09: BITCOUNT  7004  (SQL count  7004)  memory 1080 bytes
+   2026-11-10: BITCOUNT  7001  (SQL count  7001)  memory 1080 bytes
+   2026-11-11: BITCOUNT  7021  (SQL count  7021)  memory 1080 bytes
+   BITOP AND over 7 days: 6590 meters reported every day (SQL: 6590); BITOP OR: 7086 reported at least once; 496 missed one or more days -> field visit list
+   7,087 meters x 7 days stored in 7,560 bytes; the same question in SQL scans ~49,609 readings
+
+============================================================================================
+4. LIVE FEEDER STATUS BOARD - a hash rebuilt from PostgreSQL, updated by events
+============================================================================================
+redis> HLEN feeder:status
+       120
+redis> feeders out now (HGETALL, filtered)
+       {'IKJ-F12': 'OUT since 19:40 (FAULT)', 'ABK-F02': 'OUT since 21:05 (LOAD_SHEDDING)', 'OGB-F11': 'OUT since 22:30 (FAULT)'}
+redis> HGET feeder:status IKJ-F12   (after the restoration event)
+       ON
+   the customer app reads one hash (no join) when 40,000 customers open it during a blackout;
+   PostgreSQL's outage table stays the record used for the regulator's supply-hours report (Portfolio 2, Q5)
+
+============================================================================================
+5. TODAY'S REVENUE PER BUSINESS UNIT - sorted-set counters (ZINCRBY) vs SQL
+============================================================================================
+   IKJ:    6,711,000 naira
+   ABK:    4,605,000 naira
+   IBS:    4,406,000 naira
+   IBN:    4,152,000 naira
+   2203 sales of 12 Nov replayed as ZINCRBY events; Redis totals equal SQL totals: True
+   ZREVRANGE gives the ranking directly; at midnight the key is renamed and the day's figures come from SQL

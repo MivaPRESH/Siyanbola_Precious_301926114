@@ -1,0 +1,12 @@
+SET
+Timing is on.
+REFRESH MATERIALIZED VIEW
+Time: 1079.488 ms (00:01.079)
+REFRESH MATERIALIZED VIEW
+Time: 870.692 ms
+ vend_index | vend_table |   mv   
+------------+------------+--------
+ 32 MB      | 106 MB     | 112 kB
+(1 row)
+
+Time: 0.868 ms

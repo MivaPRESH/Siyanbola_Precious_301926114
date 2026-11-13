@@ -1,0 +1,13 @@
+-- Q3 [round2] Management dashboard: monthly token revenue per business unit and sales channel, 2026
+-- random_page_cost=1.1; median of 7 warm runs: 0.109 ms (min 0.108, max 0.131); planning 0.015 ms; shared buffers touched: 349
+-- SQL executed:
+--   SELECT bu_code, channel, month, vends, revenue, kwh
+--   FROM   mv_monthly_vend_revenue
+--   WHERE  month >= date '2026-01-01'
+--   ORDER  BY bu_code, channel, month;
+
+Index Scan using ux_mv_monthly_vend_revenue on mv_monthly_vend_revenue  (cost=0.28..21.77 rows=440 width=34) (actual time=0.007..0.097 rows=440 loops=1)
+  Index Cond: (month >= '2026-01-01'::date)
+  Buffers: shared hit=349
+Planning Time: 0.017 ms
+Execution Time: 0.119 ms

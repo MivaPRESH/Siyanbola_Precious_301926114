@@ -1,0 +1,146 @@
+SET
+Timing is on.
+=== D1  revenue protection: confirmed bypasses with photo evidence (>= 3 photos), per business unit ===
+ bu  | bypass_cases | unbilled_kwh 
+-----+--------------+--------------
+ OTA |           27 |        15036
+ IKJ |           25 |        17046
+ IBS |           22 |        13296
+ IKD |           22 |        12876
+ IBN |           21 |        14202
+ ABK |           19 |        10470
+ OGB |           15 |         9420
+ OYO |           12 |         7674
+(8 rows)
+
+Time: 7.075 ms
+=== D2  stores report: materials issued per business unit (array of sub-documents, installations + replacements) ===
+ bu  | cable_m | seals | fuses | pole_clamps 
+-----+---------+-------+-------+-------------
+ ABK |    9104 |  1302 |   630 |         287
+ IBN |    9389 |  1390 |   664 |         330
+ IBS |    8619 |  1252 |   601 |         281
+ IKD |    9394 |  1366 |   647 |         321
+ IKJ |   13412 |  1906 |   911 |         459
+ OGB |    4978 |   702 |   341 |         164
+ OTA |    9558 |  1396 |   665 |         297
+ OYO |    4631 |   634 |   303 |         175
+(8 rows)
+
+Time: 48.205 ms
+=== D3  which checklist items fail most often (path query into an array) ===
+   failed_item   | count 
+-----------------+-------
+ Terminal seal   |   717
+ Cover screws    |   519
+ Incoming cable  |   338
+ Display working |   114
+(4 rows)
+
+Time: 15.320 ms
+=== D4  a whole job card is one read ===
+             jsonb_pretty             
+--------------------------------------
+ {                                   +
+     "bu": "ABK",                    +
+     "_id": "WO-005465",             +
+     "gps": {                        +
+         "lat": 7.1673,              +
+         "lng": 3.3320               +
+     },                              +
+     "type": "METER_REPLACEMENT",    +
+     "feeder": "ABK-F04",            +
+     "reason": "burnt terminal",     +
+     "status": "COMPLETED",          +
+     "meter_no": "45100559108",      +
+     "materials": [                  +
+         {                           +
+             "qty": 2,               +
+             "item": "Meter seal"    +
+         },                          +
+         {                           +
+             "qty": 3,               +
+             "item": "16mm cable (m)"+
+         }                           +
+     ],                              +
+     "new_meter": {                  +
+         "no": "47956808273",        +
+         "initial_reading": 0        +
+     },                              +
+     "old_meter": {                  +
+         "no": "45100559108",        +
+         "last_reading": 9273        +
+     },                              +
+     "technician": {                 +
+         "name": "Mr K. Bakare",     +
+         "staff_no": "VGT-0113"      +
+     },                              +
+     "scheduled_for": "2026-02-01"   +
+ }
+(1 row)
+
+Time: 2.098 ms
+=== Containment query before and after a GIN (jsonb_path_ops) index ===
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Seq Scan on work_order (actual time=1.228..3.208 rows=169 loops=1)
+   Filter: (doc @> '{"bu": "IBN", "type": "DISCONNECTION", "cut_at": "pole"}'::jsonb)
+   Rows Removed by Filter: 11423
+   Buffers: shared hit=846
+ Planning Time: 0.091 ms
+ Execution Time: 3.226 ms
+(6 rows)
+
+Time: 3.608 ms
+CREATE INDEX
+Time: 114.095 ms
+ANALYZE
+Time: 42.831 ms
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on work_order (actual time=0.220..0.459 rows=169 loops=1)
+   Recheck Cond: (doc @> '{"bu": "IBN", "type": "DISCONNECTION", "cut_at": "pole"}'::jsonb)
+   Heap Blocks: exact=142
+   Buffers: shared hit=150
+   ->  Bitmap Index Scan on ix_work_order_doc (actual time=0.173..0.173 rows=169 loops=1)
+         Index Cond: (doc @> '{"bu": "IBN", "type": "DISCONNECTION", "cut_at": "pole"}'::jsonb)
+         Buffers: shared hit=8
+ Planning:
+   Buffers: shared hit=24
+ Planning Time: 0.240 ms
+ Execution Time: 0.486 ms
+(11 rows)
+
+Time: 1.049 ms
+ gin_index | collection 
+-----------+------------
+ 2704 kB   | 9880 kB
+(1 row)
+
+Time: 0.408 ms
+=== Updating part of a document: technician completes an ASSIGNED job (status + appended history entry) ===
+Time: 3.436 ms
+   wo_id   |     type      |  status   |                               history                               
+-----------+---------------+-----------+---------------------------------------------------------------------
+ WO-011497 | DISCONNECTION | COMPLETED | [{"at": "2026-11-12T16:20:00+01:00", "event": "completed on site"}]
+(1 row)
+
+UPDATE 1
+Time: 1.278 ms
+=== Schema flexibility: a NEW job type (solar net-meter survey) with its own fields - no ALTER TABLE ===
+INSERT 0 1
+Time: 0.689 ms
+       type       | kwp | roof  
+------------------+-----+-------
+ NET_METER_SURVEY | 5.4 | south
+(1 row)
+
+Time: 0.170 ms
+=== Validation still applies: a COMPLETED tamper inspection without findings is rejected ===
+psql:document_queries.sql:57: ERROR:  new row for relation "work_order" violates check constraint "tamper_has_findings"
+DETAIL:  Failing row contains (WO-BAD-1, {"type": "TAMPER_INSPECTION", "status": "COMPLETED", "meter_no":...).
+Time: 0.210 ms
+=== ... and so is an unknown job type ===
+psql:document_queries.sql:59: ERROR:  new row for relation "work_order" violates check constraint "doc_type_known"
+DETAIL:  Failing row contains (WO-BAD-2, {"type": "PAINT_POLE", "meter_no": "45100000291"}).
+Time: 0.126 ms

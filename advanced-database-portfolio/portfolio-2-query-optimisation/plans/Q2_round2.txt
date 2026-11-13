@@ -1,0 +1,84 @@
+-- Q2 [round2] Energy accounting: October consumption of postpaid meters per business unit and band
+-- random_page_cost=1.1; median of 7 warm runs: 87.641 ms (min 83.830, max 91.631); planning 0.681 ms; shared buffers touched: 2379
+-- SQL executed:
+--   WITH m AS (
+--     SELECT meter_no, max(kwh_total) - min(kwh_total) AS kwh
+--     FROM   meter_reading
+--     WHERE  read_at >= timestamptz '2026-10-01 00:00+01' AND read_at < timestamptz '2026-11-01 00:00+01'
+--     GROUP  BY meter_no)
+--   SELECT vm.bu_code, vm.band, count(*) AS meters, round(sum(m.kwh)) AS kwh
+--   FROM   m JOIN v_meter vm USING (meter_no)
+--   GROUP  BY vm.bu_code, vm.band
+--   ORDER  BY vm.bu_code, vm.band;
+
+Sort  (cost=8968.88..8968.98 rows=40 width=46) (actual time=92.461..92.571 rows=40 loops=1)
+  Sort Key: b.bu_code, f.band
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=2379
+  ->  HashAggregate  (cost=8967.21..8967.81 rows=40 width=46) (actual time=92.420..92.539 rows=40 loops=1)
+        Group Key: b.bu_code, f.band
+        Batches: 1  Memory Usage: 32kB
+        Buffers: shared hit=2379
+        ->  Hash Join  (cost=7763.06..8896.40 rows=7081 width=38) (actual time=78.132..90.679 rows=7086 loops=1)
+              Hash Cond: (f.bu_id = b.bu_id)
+              Buffers: shared hit=2379
+              ->  Hash Join  (cost=7761.88..8866.79 rows=7081 width=36) (actual time=78.119..89.598 rows=7086 loops=1)
+                    Hash Cond: (dt.feeder_id = f.feeder_id)
+                    Buffers: shared hit=2378
+                    ->  Hash Join  (cost=7758.18..8843.85 rows=7081 width=34) (actual time=78.089..88.364 rows=7086 loops=1)
+                          Hash Cond: (me.dt_id = dt.dt_id)
+                          Buffers: shared hit=2377
+                          ->  Hash Join  (cost=7723.18..8790.19 rows=7081 width=36) (actual time=77.878..86.876 rows=7086 loops=1)
+                                Hash Cond: (c.customer_id = me.customer_id)
+                                Buffers: shared hit=2369
+                                ->  Index Only Scan using customer_pkey on customer c  (cost=0.29..846.49 rows=40000 width=4) (actual time=0.006..3.930 rows=40000 loops=1)
+                                      Heap Fetches: 135
+                                      Buffers: shared hit=223
+                                ->  Hash  (cost=7634.38..7634.38 rows=7081 width=40) (actual time=77.865..77.961 rows=7086 loops=1)
+                                      Buckets: 8192  Batches: 1  Memory Usage: 400kB
+                                      Buffers: shared hit=2146
+                                      ->  Hash Join  (cost=6743.12..7634.38 rows=7081 width=40) (actual time=67.201..76.755 rows=7086 loops=1)
+                                            Hash Cond: (me.meter_no = m.meter_no)
+                                            Buffers: shared hit=2146
+                                            ->  Seq Scan on meter me  (cost=0.00..781.00 rows=42000 width=20) (actual time=0.003..2.972 rows=42000 loops=1)
+                                                  Buffers: shared hit=361
+                                            ->  Hash  (cost=6654.61..6654.61 rows=7081 width=44) (actual time=67.157..67.251 rows=7086 loops=1)
+                                                  Buckets: 8192  Batches: 1  Memory Usage: 418kB
+                                                  Buffers: shared hit=1785
+                                                  ->  Subquery Scan on m  (cost=6495.28..6654.61 rows=7081 width=44) (actual time=62.725..65.721 rows=7086 loops=1)
+                                                        Buffers: shared hit=1785
+                                                        ->  Finalize HashAggregate  (cost=6495.28..6583.80 rows=7081 width=44) (actual time=62.723..64.883 rows=7086 loops=1)
+                                                              Group Key: meter_reading.meter_no
+                                                              Batches: 1  Memory Usage: 1425kB
+                                                              Buffers: shared hit=1785
+                                                              ->  Gather  (cost=5663.27..6442.18 rows=7081 width=76) (actual time=56.075..58.180 rows=14172 loops=1)
+                                                                    Workers Planned: 1
+                                                                    Workers Launched: 1
+                                                                    Buffers: shared hit=1785
+                                                                    ->  Partial HashAggregate  (cost=4663.27..4734.08 rows=7081 width=76) (actual time=54.117..55.026 rows=7086 loops=2)
+                                                                          Group Key: meter_reading.meter_no
+                                                                          Batches: 1  Memory Usage: 1233kB
+                                                                          Buffers: shared hit=1785
+                                                                          Worker 0:  Batches: 1  Memory Usage: 1425kB
+                                                                          ->  Parallel Seq Scan on meter_reading_2026_10 meter_reading  (cost=0.00..3703.84 rows=127923 width=20) (actual time=0.006..14.855 rows=108734 loops=2)
+                                                                                Filter: ((read_at >= '2026-10-01 00:00:00+01'::timestamp with time zone) AND (read_at < '2026-11-01 00:00:00+01'::timestamp with time zone))
+                                                                                Buffers: shared hit=1785
+                          ->  Hash  (cost=20.00..20.00 rows=1200 width=6) (actual time=0.208..0.209 rows=1200 loops=1)
+                                Buckets: 2048  Batches: 1  Memory Usage: 61kB
+                                Buffers: shared hit=8
+                                ->  Seq Scan on transformer dt  (cost=0.00..20.00 rows=1200 width=6) (actual time=0.002..0.095 rows=1200 loops=1)
+                                      Buffers: shared hit=8
+                    ->  Hash  (cost=2.20..2.20 rows=120 width=6) (actual time=0.026..0.027 rows=120 loops=1)
+                          Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                          Buffers: shared hit=1
+                          ->  Seq Scan on feeder f  (cost=0.00..2.20 rows=120 width=6) (actual time=0.004..0.014 rows=120 loops=1)
+                                Buffers: shared hit=1
+              ->  Hash  (cost=1.08..1.08 rows=8 width=6) (actual time=0.008..0.009 rows=8 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                    Buffers: shared hit=1
+                    ->  Seq Scan on business_unit b  (cost=0.00..1.08 rows=8 width=6) (actual time=0.004..0.005 rows=8 loops=1)
+                          Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=22
+Planning Time: 0.593 ms
+Execution Time: 92.671 ms

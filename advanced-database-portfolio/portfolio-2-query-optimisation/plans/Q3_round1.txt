@@ -1,0 +1,18 @@
+-- Q3 [round1] Management dashboard: monthly token revenue per business unit and sales channel, 2026
+-- random_page_cost=4; median of 7 warm runs: 0.566 ms (min 0.526, max 0.643); planning 0.046 ms; shared buffers touched: 8
+-- SQL executed:
+--   SELECT bu_code, channel, month, vends, revenue, kwh
+--   FROM   mv_monthly_vend_revenue
+--   WHERE  month >= date '2026-01-01'
+--   ORDER  BY bu_code, channel, month;
+
+Sort  (cost=33.82..34.92 rows=440 width=34) (actual time=0.466..0.495 rows=440 loops=1)
+  Sort Key: bu_code, channel, month
+  Sort Method: quicksort  Memory: 52kB
+  Buffers: shared hit=8
+  ->  Seq Scan on mv_monthly_vend_revenue  (cost=0.00..14.50 rows=440 width=34) (actual time=0.006..0.071 rows=440 loops=1)
+        Filter: (month >= '2026-01-01'::date)
+        Rows Removed by Filter: 80
+        Buffers: shared hit=8
+Planning Time: 0.043 ms
+Execution Time: 0.527 ms

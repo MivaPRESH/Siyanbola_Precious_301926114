@@ -1,0 +1,27 @@
+-- Q1 [baseline] Customer app: "my last 10 token purchases" for a meter (opened on every app launch)
+-- random_page_cost=4; median of 7 warm runs: 48.414 ms (min 41.123, max 56.792); planning 0.086 ms; shared buffers touched: 13581
+-- SQL executed:
+--   SELECT v.vended_at, v.channel, v.amount, v.kwh, v.token
+--   FROM   vend v
+--   WHERE  v.meter_no = '45100000291'
+--   ORDER  BY v.vended_at DESC
+--   LIMIT  10;
+
+Limit  (cost=18795.80..18796.96 rows=10 width=44) (actual time=39.714..41.744 rows=6 loops=1)
+  Buffers: shared hit=1234 read=12347
+  ->  Gather Merge  (cost=18795.80..18798.36 rows=22 width=44) (actual time=39.713..41.740 rows=6 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=1234 read=12347
+        ->  Sort  (cost=17795.77..17795.80 rows=11 width=44) (actual time=35.762..35.763 rows=2 loops=3)
+              Sort Key: vended_at DESC
+              Sort Method: quicksort  Memory: 25kB
+              Buffers: shared hit=1234 read=12347
+              Worker 0:  Sort Method: quicksort  Memory: 25kB
+              Worker 1:  Sort Method: quicksort  Memory: 25kB
+              ->  Parallel Seq Scan on vend v  (cost=0.00..17795.58 rows=11 width=44) (actual time=15.753..35.713 rows=2 loops=3)
+                    Filter: (meter_no = '45100000291'::bpchar)
+                    Rows Removed by Filter: 274595
+                    Buffers: shared hit=1158 read=12347
+Planning Time: 0.086 ms
+Execution Time: 41.764 ms

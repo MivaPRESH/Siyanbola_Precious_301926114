@@ -1,0 +1,36 @@
+You are now connected to database "voltgrid_shard" as user "postgres" on host "localhost" (address "127.0.0.1") at port "5434".
+psql:02_sharding.sql:12: NOTICE:  table "reading_shard" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+You are now connected to database "voltgrid_shard" as user "postgres" on host "localhost" (address "127.0.0.1") at port "5435".
+psql:02_sharding.sql:22: NOTICE:  table "reading_shard" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+You are now connected to database "voltgrid" as user "postgres" on host "localhost" (address "127.0.0.1") at port "5432".
+CREATE EXTENSION
+psql:02_sharding.sql:34: NOTICE:  schema "voltgrid_dist" does not exist, skipping
+DROP SCHEMA
+psql:02_sharding.sql:35: NOTICE:  server "srv_shard_a" does not exist, skipping
+DROP SERVER
+psql:02_sharding.sql:36: NOTICE:  server "srv_shard_b" does not exist, skipping
+DROP SERVER
+CREATE SCHEMA
+CREATE SERVER
+CREATE SERVER
+CREATE USER MAPPING
+CREATE USER MAPPING
+CREATE TABLE
+CREATE FOREIGN TABLE
+CREATE FOREIGN TABLE
+Timing is on.
+INSERT 0 2644634
+Time: 25288.481 ms (00:25.288)
+Timing is off.
+ANALYZE
+ANALYZE
+          shard           | readings | meters 
+--------------------------+----------+--------
+ voltgrid_dist.readings_a |  1296147 |   3473
+ voltgrid_dist.readings_b |  1348487 |   3613
+(2 rows)
+

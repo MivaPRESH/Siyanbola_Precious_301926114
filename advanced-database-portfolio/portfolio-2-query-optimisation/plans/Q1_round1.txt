@@ -1,0 +1,16 @@
+-- Q1 [round1] Customer app: "my last 10 token purchases" for a meter (opened on every app launch)
+-- random_page_cost=4; median of 7 warm runs: 0.010 ms (min 0.009, max 0.020); planning 0.016 ms; shared buffers touched: 9
+-- SQL executed:
+--   SELECT v.vended_at, v.channel, v.amount, v.kwh, v.token
+--   FROM   vend v
+--   WHERE  v.meter_no = '45100000291'
+--   ORDER  BY v.vended_at DESC
+--   LIMIT  10;
+
+Limit  (cost=0.42..42.03 rows=10 width=44) (actual time=0.005..0.009 rows=6 loops=1)
+  Buffers: shared hit=9
+  ->  Index Scan using ix_vend_meter_time on vend v  (cost=0.42..116.91 rows=28 width=44) (actual time=0.005..0.008 rows=6 loops=1)
+        Index Cond: (meter_no = '45100000291'::bpchar)
+        Buffers: shared hit=9
+Planning Time: 0.024 ms
+Execution Time: 0.014 ms

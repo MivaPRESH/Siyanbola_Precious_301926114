@@ -1,0 +1,41 @@
+// VoltGrid Power - ER diagram (crow's foot). Render: dot -Tpng erd.dot -o erd.png
+digraph VoltGridERD {
+  graph [rankdir=LR, splines=polyline, nodesep=0.4, ranksep=0.85, fontname="Helvetica", bgcolor="white",
+         label="VoltGrid Power - ER Diagram (PK = primary key, FK = foreign key, UQ = unique)", labelloc=t, fontsize=18];
+  node [shape=plain, fontname="Helvetica", fontsize=11];
+  edge [dir=both, arrowsize=0.9, color="#334155", fontname="Helvetica", fontsize=9, fontcolor="#475569"];
+  bu [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#F8FAFC">
+    <TR><TD BGCOLOR="#64748B"><FONT COLOR="white"><B>BUSINESS_UNIT</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK bu_id</TD></TR><TR><TD ALIGN="LEFT">UQ bu_code</TD></TR><TR><TD ALIGN="LEFT">bu_name, state (CHECK)</TD></TR></TABLE>>];
+  feeder [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#F0FDF4">
+    <TR><TD BGCOLOR="#15803D"><FONT COLOR="white"><B>FEEDER</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK feeder_id</TD></TR><TR><TD ALIGN="LEFT">FK bu_id</TD></TR><TR><TD ALIGN="LEFT">UQ feeder_code</TD></TR><TR><TD ALIGN="LEFT">voltage_kv (11 | 33)</TD></TR><TR><TD ALIGN="LEFT">band (A-E)</TD></TR></TABLE>>];
+  dt [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#F0FDF4">
+    <TR><TD BGCOLOR="#15803D"><FONT COLOR="white"><B>TRANSFORMER</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK dt_id</TD></TR><TR><TD ALIGN="LEFT">FK feeder_id</TD></TR><TR><TD ALIGN="LEFT">UQ dt_code</TD></TR><TR><TD ALIGN="LEFT">capacity_kva</TD></TR></TABLE>>];
+  tariff [label=<<TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#FEF3C7">
+    <TR><TD BGCOLOR="#B45309"><FONT COLOR="white"><B>TARIFF</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK tariff_id</TD></TR><TR><TD ALIGN="LEFT">band, customer_class</TD></TR><TR><TD ALIGN="LEFT">rate_per_kwh (&gt; 0)</TD></TR><TR><TD ALIGN="LEFT">valid_during DATERANGE</TD></TR><TR><TD ALIGN="LEFT">EXCLUDE overlapping versions</TD></TR></TABLE>>];
+  cust [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#EFF6FF">
+    <TR><TD BGCOLOR="#1D4ED8"><FONT COLOR="white"><B>CUSTOMER</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK customer_id</TD></TR><TR><TD ALIGN="LEFT">UQ account_no (VGnnnnnnnnnn)</TD></TR><TR><TD ALIGN="LEFT">full_name, phone (CHECK)</TD></TR><TR><TD ALIGN="LEFT">customer_class (R2|C1|C2|D1)</TD></TR><TR><TD ALIGN="LEFT">FK bu_id</TD></TR><TR><TD ALIGN="LEFT">address</TD></TR></TABLE>>];
+  meter [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#EFF6FF">
+    <TR><TD BGCOLOR="#1D4ED8"><FONT COLOR="white"><B>METER</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK meter_no (11 digits)</TD></TR><TR><TD ALIGN="LEFT">FK customer_id</TD></TR><TR><TD ALIGN="LEFT">FK dt_id</TD></TR><TR><TD ALIGN="LEFT">meter_type (PREPAID|POSTPAID)</TD></TR><TR><TD ALIGN="LEFT">status (ACTIVE|SUSPENDED|REMOVED)</TD></TR><TR><TD ALIGN="LEFT">installed_on</TD></TR></TABLE>>];
+  vend [label=<<TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#FFF7ED">
+    <TR><TD BGCOLOR="#C2410C"><FONT COLOR="white"><B>VEND (token sale)</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK vend_id</TD></TR><TR><TD ALIGN="LEFT">FK meter_no, FK tariff_id</TD></TR><TR><TD ALIGN="LEFT">UQ payment_ref (idempotency)</TD></TR><TR><TD ALIGN="LEFT">channel, amount (500 - 1m)</TD></TR><TR><TD ALIGN="LEFT">vat (CHECK 7.5%), kwh</TD></TR><TR><TD ALIGN="LEFT">UQ token (20 digits)</TD></TR><TR><TD ALIGN="LEFT">trigger: active prepaid meter,</TD></TR><TR><TD ALIGN="LEFT">tariff of the day, VAT, kWh</TD></TR></TABLE>>];
+  reading [label=<<TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#FAF5FF">
+    <TR><TD BGCOLOR="#7E22CE"><FONT COLOR="white"><B>METER_READING</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK (meter_no, read_at)</TD></TR><TR><TD ALIGN="LEFT">FK meter_no</TD></TR><TR><TD ALIGN="LEFT">kwh_total (cumulative)</TD></TR><TR><TD ALIGN="LEFT">PARTITION BY RANGE (read_at)</TD></TR><TR><TD ALIGN="LEFT">13 monthly partitions</TD></TR></TABLE>>];
+  bill [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#FFF7ED">
+    <TR><TD BGCOLOR="#C2410C"><FONT COLOR="white"><B>BILL</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK bill_id</TD></TR><TR><TD ALIGN="LEFT">FK meter_no, FK tariff_id</TD></TR><TR><TD ALIGN="LEFT">UQ (meter_no, period)</TD></TR><TR><TD ALIGN="LEFT">period = 1st of month</TD></TR><TR><TD ALIGN="LEFT">kwh, energy, vat</TD></TR><TR><TD ALIGN="LEFT">paid (0 .. energy + vat)</TD></TR><TR><TD ALIGN="LEFT">due_date</TD></TR></TABLE>>];
+  pay [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#FFF7ED">
+    <TR><TD BGCOLOR="#C2410C"><FONT COLOR="white"><B>PAYMENT</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK payment_id</TD></TR><TR><TD ALIGN="LEFT">FK bill_id</TD></TR><TR><TD ALIGN="LEFT">UQ payment_ref</TD></TR><TR><TD ALIGN="LEFT">amount (&gt; 0), paid_at</TD></TR></TABLE>>];
+  outage [label=<<TABLE BORDER="2" CELLBORDER="0" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#FEF3C7">
+    <TR><TD BGCOLOR="#B45309"><FONT COLOR="white"><B>OUTAGE</B></FONT></TD></TR><TR><TD ALIGN="LEFT">PK outage_id</TD></TR><TR><TD ALIGN="LEFT">FK feeder_id</TD></TR><TR><TD ALIGN="LEFT">started_at, restored_at (NULL = still out)</TD></TR><TR><TD ALIGN="LEFT">cause (CHECK)</TD></TR><TR><TD ALIGN="LEFT">CHECK restored &gt; started</TD></TR><TR><TD ALIGN="LEFT">EXCLUDE overlapping outages</TD></TR></TABLE>>];
+  bu -> feeder [arrowtail=tee, arrowhead=crowodot, xlabel="supplies"];
+  bu -> cust [arrowtail=tee, arrowhead=crowodot, xlabel="serves"];
+  feeder -> dt [arrowtail=tee, arrowhead=crowodot, xlabel=""];
+  feeder -> outage [arrowtail=tee, arrowhead=crowodot, xlabel="suffers"];
+  dt -> meter [arrowtail=tee, arrowhead=crowodot, xlabel="feeds"];
+  cust -> meter [arrowtail=tee, arrowhead=crowodot, xlabel="owns"];
+  meter -> vend [arrowtail=tee, arrowhead=crowodot, xlabel="buys tokens"];
+  meter -> reading [arrowtail=tee, arrowhead=crowodot, xlabel="is read"];
+  meter -> bill [arrowtail=tee, arrowhead=crowodot, xlabel="is billed"];
+  bill -> pay [arrowtail=tee, arrowhead=crowodot, xlabel="settled by"];
+  tariff -> vend [arrowtail=tee, arrowhead=crowodot, xlabel="prices"];
+  tariff -> bill [arrowtail=tee, arrowhead=crowodot, xlabel="prices"];
+}
